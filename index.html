@@ -8,24 +8,15 @@
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; 
-            background-color: #080808; /* 깊이감 있는 딥 다크 그레이 */
+            background-color: #080808; 
             font-family: monospace;
         }
         #topoCanvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
         }
-        /* 나중에 중앙에 텍스트를 넣으실 수 있도록 미리 비워둔 컨테이너 */
-        .center-content {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 10; pointer-events: none; text-align: center; color: white;
-        }
     </style>
 </head>
 <body>
-    
-    <div class="center-content">
-        </div>
-
     <canvas id="topoCanvas"></canvas>
 
     <script>
@@ -45,7 +36,7 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // --- 1. 가볍고 강력한 3D 노이즈 함수 ---
+        // 가볍고 강력한 3D 노이즈 함수
         function hash(x, y, z) {
             let h = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453123;
             return h - Math.floor(h);
@@ -85,36 +76,40 @@
 
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
-            // 가운데를 비울 반지름 크기 (화면 크기에 비례)
-            const holeRadius = Math.min(canvas.width, canvas.height) * 0.25; 
+            
+            // 중앙을 넓고 완만하게 비우기 위한 가상의 반지름
+            const hillRadius = Math.min(canvas.width, canvas.height) * 0.45; 
 
-            // 1. 노이즈 필드 그리드 생성 (중앙 뚫기 로직 포함)
+            // 1. 노이즈 필드 그리드 생성
             for (let i = 0; i < cols; i++) {
                 grid[i] = [];
                 for (let j = 0; j < rows; j++) {
                     let px = i * GRID_RES;
                     let py = j * GRID_RES;
                     
-                    // 기본 유기적 지형 노이즈
-                    let baseNoise = noise3D(i * 0.05, j * 0.05, time); 
+                    // 기본 유기적 지형 노이즈 (값을 낮춰 선의 밀도감 조정)
+                    let baseNoise = noise3D(i * 0.04, j * 0.04, time); 
 
-                    // --- 🌟 핵심: 중앙에 가상의 '거대한 산' 만들기 ---
-                    let distToCenter = Math.hypot(px - centerX, py - centerY);
+                    // --- 🌟 핵심: 인위적인 원형을 부수고 유기적인 '빈 공간' 만들기 ---
+                    // 노이즈를 이용해 중앙의 좌표계 자체를 심하게 일그러뜨립니다.
+                    let distortX = px + noise3D(i * 0.02, j * 0.02, time) * 250;
+                    let distortY = py + noise3D(i * 0.02 + 10, j * 0.02 + 10, time) * 250;
+
+                    let dist = Math.hypot(distortX - centerX, distortY - centerY);
                     
-                    // 거리가 가까울수록 값이 급격히 커지는 수식 (가운데를 임계치 이상으로 덮어버림)
-                    // Math.pow(..., 3)을 써서 경계면이 가파르면서도 부드럽게 깎이게 함
-                    let mountainBump = Math.exp(-Math.pow(distToCenter / (holeRadius * 0.8), 3)) * 3.0;
+                    // 일그러진 좌표계 위에 완만하고 둥글지 않은(찌그러진) 언덕 생성
+                    let mountainBump = Math.exp(-Math.pow(dist / hillRadius, 2)) * 1.8;
                     
-                    // 기본 노이즈에 중앙 산맥의 높이를 더함
                     grid[i][j] = baseNoise + mountainBump; 
                 }
             }
 
             // 2. 등고선 레벨(Threshold) 설정
             let thresholds = [];
-            for(let i = 0; i < 22; i++) {
-                // 임계치는 -0.6 ~ 0.8 사이. 중앙(mountainBump)은 3.0이 넘으므로 선이 생기지 않음!
-                thresholds.push(-0.6 + (i / 21) * 1.4); 
+            for(let i = 0; i < 26; i++) {
+                // -0.7 ~ 1.1 까지만 선을 긋습니다. 
+                // 중앙의 mountainBump는 이 값보다 높기 때문에 선이 그려지지 않고 '자연스럽게' 여백이 생깁니다.
+                thresholds.push(-0.7 + (i / 25) * 1.8); 
             }
 
             let allPaths = [];
@@ -155,7 +150,6 @@
                     }
                 }
 
-                // 선분 이어붙이기
                 let ptKey = p => p[0].toFixed(2) + ',' + p[1].toFixed(2);
                 let adj = new Map();
                 for (let s of segments) {
@@ -196,7 +190,6 @@
                         if (!found) break;
                     }
                     
-                    // Path 스무딩
                     for (let iter = 0; iter < 2; iter++) {
                         let smoothed = [path[0]];
                         for (let k = 1; k < path.length - 1; k++) smoothed.push([path[k][0]*0.5 + path[k-1][0]*0.25 + path[k+1][0]*0.25, path[k][1]*0.5 + path[k-1][1]*0.25 + path[k+1][1]*0.25]);
@@ -210,9 +203,9 @@
             // 4. 경로 위에 글자 그리기
             ctx.font = `${FONT_SIZE}px monospace`;
             ctx.textBaseline = "middle";
-            ctx.fillStyle = "rgba(255, 255, 255, 0.65)"; // 은은한 불투명도
+            ctx.fillStyle = "rgba(255, 255, 255, 0.55)"; 
 
-            let globalFlow = (time * 18) % 100;
+            let globalFlow = (time * 16) % 100;
 
             for (let path of allPaths) {
                 if(path.length < 5) continue; 
