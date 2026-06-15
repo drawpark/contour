@@ -3,56 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DATA TO INSIGHT | Product Designer</title>
+    <title>DATA TO INSIGHT</title>
     <style>
-        /* 1. 기본 스타일 리셋 및 다크모드 배경 */
         body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background-color: #000000;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: #000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
-
-        /* 2. 인터랙티브 캔버스 레이어 */
         #topoCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
         }
-
-        /* 3. 중앙 타이틀 (텍스트 레이어) */
         .center-container {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            z-index: 10; /* 캔버스 위로 올림 */
-            pointer-events: none; /* 마우스 이벤트가 캔버스에 전달되도록 함 */
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; z-index: 10; pointer-events: none;
         }
-
         .title {
-            color: #ffffff;
-            font-size: 4rem;
-            font-weight: 800;
-            letter-spacing: 0.5rem;
-            margin: 0;
-            text-transform: uppercase;
-            text-shadow: 0 0 20px rgba(0,0,0,0.8);
+            color: #fff; font-size: 3.5rem; font-weight: 800;
+            letter-spacing: 0.6rem; margin: 0; text-transform: uppercase;
+            white-space: nowrap;
         }
-
         .subtitle {
-            color: #888888;
-            font-size: 1rem;
-            letter-spacing: 0.2rem;
-            margin-top: 10px;
-            text-transform: uppercase;
+            color: #666; font-size: 0.85rem; letter-spacing: 0.25rem;
+            margin-top: 12px; text-transform: uppercase;
         }
     </style>
 </head>
@@ -69,7 +41,7 @@
         const canvas = document.getElementById('topoCanvas');
         const ctx = canvas.getContext('2d');
 
-        // 창 크기 맞추기
+        // 1. 완벽한 반응형 캔버스 설정
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -77,105 +49,117 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // 마우스 좌표 객체
-        const mouse = { x: null, y: null, radius: 150 };
+        // 마우스 인터랙션 좌표
+        const mouse = { x: null, y: null, radius: 180, activeRadius: 0 };
         window.addEventListener('mousemove', (e) => {
-            mouse.x = e.x;
-            mouse.y = e.y;
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            // 마우스가 움직일 때 반응 반경을 부드럽게 키움
+            mouse.activeRadius = Math.min(mouse.radius, mouse.activeRadius + 10);
         });
         window.addEventListener('mouseout', () => {
-            mouse.x = null;
-            mouse.y = null;
+            mouse.x = null; mouse.y = null; mouse.activeRadius = 0;
         });
 
-        // 3단 범용 데이터 텍스트 정의
-        const dataLayers = {
-            outer: ["var(--color-surface)", "breakpoint:1440px", "component:data-grid", "border-radius:12px", "state:hover", "padding:16px", "gap:8px"],
-            middle: ["API_status:200_OK", "workflow_latency:14ms", "data_pipeline:active", "auth_token:valid", "cache_status:HIT"],
-            inner: ["conversion_rate:+14.5%", "task_duration:-82%", "user_retention:optimized", "ROI:increased_3x", "bounce_rate:-24%"]
-        };
+        // 2. JSON 데이터 비동기 로드 및 실행
+        let rings = [];
+        const totalRings = 28; // 촘촘한 고밀도 지형을 위해 등고선 수 대폭 증가
 
-        // 등고선 링(Ring) 객체 배열 생성
-        const rings = [];
-        const totalRings = 15; // 등고선 총 개수
-
-        for (let i = 0; i < totalRings; i++) {
-            // 안쪽(0)에서 바깥쪽(1)까지의 비율
-            const ratio = i / totalRings; 
-            
-            // 레이어에 따른 텍스트 세트 배정
-            let textSet = dataLayers.inner;
-            let color = 'rgba(255, 255, 255, 0.8)'; // 안쪽: 비즈니스 가치 (밝게)
-            
-            if (ratio > 0.3 && ratio <= 0.7) {
-                textSet = dataLayers.middle;
-                color = 'rgba(255, 255, 255, 0.4)'; // 중간: 시스템/백엔드
-            } else if (ratio > 0.7) {
-                textSet = dataLayers.outer;
-                color = 'rgba(255, 255, 255, 0.15)'; // 바깥쪽: UI 토큰 (은은하게)
+        async function init() {
+            try {
+                const response = await fetch('data.json');
+                const dataLayers = await response.json();
+                createTopography(dataLayers);
+                animate();
+            } catch (error) {
+                console.error("데이터 로드 실패:", error);
             }
-
-            rings.push({
-                baseRadius: 100 + ratio * (Math.max(window.innerWidth, window.innerHeight) * 0.6),
-                textSet: textSet,
-                color: color,
-                seed: Math.random() * 100, // 각 링마다 흐르는 타이밍 다르게 고유값 부여
-                speed: 0.002 + (1 - ratio) * 0.003 // 안쪽이 조금 더 빠르게 흐르도록 설정
-            });
         }
 
-        // 애니메이션 루프
+        function createTopography(dataLayers) {
+            for (let i = 0; i < totalRings; i++) {
+                const ratio = i / totalRings;
+                let textSet = dataLayers.inner;
+                let color = `rgba(255, 255, 255, ${0.85 - ratio * 0.4})`; // 안쪽은 선명하게, 바깥은 은은하게
+                
+                if (ratio > 0.25 && ratio <= 0.65) {
+                    textSet = dataLayers.middle;
+                } else if (ratio > 0.65) {
+                    textSet = dataLayers.outer;
+                }
+
+                rings.push({
+                    id: i,
+                    ratio: ratio,
+                    textSet: textSet,
+                    color: color,
+                    // 비대칭 지형 변형을 위한 고유 오프셋 값들
+                    noiseSeedX: Math.random() * 50,
+                    noiseSeedY: Math.random() * 50,
+                    speed: 0.003 + (1 - ratio) * 0.002
+                });
+            }
+        }
+
         let time = 0;
+
         function animate() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            time += 0.5;
+            time += 0.4;
 
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
+            const maxRadius = Math.max(canvas.width, canvas.height) * 0.7;
 
             rings.forEach((ring) => {
                 ctx.fillStyle = ring.color;
-                ctx.font = "11px monospace";
+                ctx.font = "10px monospace";
 
-                // 하나의 링 위에 원형으로 텍스트 배치
-                const numTexts = Math.floor(ring.baseRadius * 0.1); 
+                // 등고선의 기본 반지름 (중심에서 바깥으로 확장)
+                const baseRadius = 80 + ring.ratio * maxRadius;
                 
-                for (let j = 0; j < numTexts; j++) {
-                    const angle = (j / numTexts) * Math.PI * 2 + (time * ring.speed);
-                    
-                    // 1. 가만히 있어도 흐르고 찌그러지는 '노이즈/웨이브' 수학 공식 (Idle 애니메이션)
-                    // 사인곡선을 여러 개 중첩해서 등고선이 합쳐지거나 흐르는 느낌 연출
-                    const waveOffset = Math.sin(angle * 4 + time * 0.01 + ring.seed) * 20 
-                                     + Math.cos(angle * 2 - time * 0.02) * 15;
-                    
-                    let currentRadius = ring.baseRadius + waveOffset;
+                // 글자 수 조절 (선이 길어질수록 촘촘하게 배치)
+                const numTexts = Math.floor(baseRadius * 0.08);
 
-                    // 원래 생성될 좌표 계산
+                for (let j = 0; j < numTexts; j++) {
+                    const angle = (j / numTexts) * Math.PI * 2;
+
+                    // 3. 진짜 등고선 느낌을 내는 '비대칭 유기체 노이즈 필드' 계산
+                    // 뱅글뱅글 도는 회전 운동을 배제하고, 여러 위상의 사인파를 중첩하여 지형이 일렁이게 만듦
+                    let wave = Math.sin(angle * 3 + time * 0.01 + ring.noiseSeedX) * 25
+                             + Math.cos(angle * 5 - time * 0.015 + ring.noiseSeedY) * 15
+                             + Math.sin(angle * 1 + time * 0.005) * (40 * ring.ratio); // 바깥쪽으로 갈수록 비대칭 왜곡률 증가
+
+                    // 고정된 원이 아니라 찌그러진 지형 선상의 반지름 계산
+                    let currentRadius = baseRadius + wave;
+
+                    // 기본 지형 좌푯값
                     let x = centerX + Math.cos(angle) * currentRadius;
                     let y = centerY + Math.sin(angle) * currentRadius;
 
-                    // 2. 마우스 호버 반응 애니메이션 (밀려나기 처리)
+                    // 4. 마우스 호버 반응 (부드러운 밀려남 유체 역학 효과)
                     if (mouse.x !== null && mouse.y !== null) {
                         const dx = x - mouse.x;
                         const dy = y - mouse.y;
                         const distance = Math.sqrt(dx * dx + dy * dy);
 
-                        if (distance < mouse.radius) {
-                            // 마우스와 가까울수록 강하게 밀어냄
-                            const force = (mouse.radius - distance) / mouse.radius;
-                            const push = force * 40; // 밀려나는 강도
+                        if (distance < mouse.activeRadius) {
+                            // 마우스 중심점과의 거리에 비례한 밀어내는 힘 (가까울수록 강함)
+                            const force = (mouse.activeRadius - distance) / mouse.activeRadius;
+                            const push = force * 45; 
                             
                             x += (dx / distance) * push;
                             y += (dy / distance) * push;
                         }
                     }
 
-                    // 텍스트 그리기
+                    // 텍스트 그리기 및 지형 선에 맞춘 정교한 회전 값 부여
                     const text = ring.textSet[j % ring.textSet.length];
                     
                     ctx.save();
                     ctx.translate(x, y);
-                    ctx.rotate(angle + Math.PI / 2); // 등고선 선 방향에 맞추어 텍스트 회전
+                    // 텍스트가 단순히 원을 도는 게 아니라, 등고선의 꺾이는 곡률에 맞춰 정렬되도록 조정
+                    ctx.rotate(angle + Math.PI / 2 + (wave * 0.002));
                     ctx.fillText(text, 0, 0);
                     ctx.restore();
                 }
@@ -184,7 +168,8 @@
             requestAnimationFrame(animate);
         }
 
-        animate();
+        // 실행
+        init();
     </script>
 </body>
 </html>
