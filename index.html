@@ -7,7 +7,7 @@
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            overflow: hidden; background-color: #030304;
+            overflow: hidden; background-color: #030304; /* 깊고 고급스러운 다크 블랙 */
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
         #topoCanvas {
@@ -20,7 +20,7 @@
         .title {
             color: #ffffff; font-size: 3.8rem; font-weight: 700;
             letter-spacing: 0.8rem; margin: 0; text-transform: uppercase;
-            white-space: nowrap;
+            white-space: nowrap; text-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
         }
         .subtitle {
             color: #38383f; font-size: 0.8rem; letter-spacing: 0.35rem;
@@ -76,7 +76,7 @@
         }
 
         let rings = [];
-        const totalRings = 30; // 촘촘함을 유지하는 최적의 등고선 수
+        const totalRings = 45; // 촘촘함을 유지하는 고밀도 등고선 세팅
 
         async function init() {
             try {
@@ -93,9 +93,10 @@
 
                     rings.push({ 
                         ratio, 
-                        textSet, 
+                        // JSON 데이터 전체를 하나의 끊김 없는 데이터 스트림으로 통합
+                        fullTextStream: textSet.join(" ") + " ", // 문장 사이 공백 추가로 seamless 흐름
                         opacity,
-                        flowSpeed: 0.0015 + (1 - ratio) * 0.002, // 안쪽 비즈니스 데이터가 더 핵심적이므로 빠르게 흐름
+                        flowSpeed: 0.001 + (1 - ratio) * 0.0015, // 안쪽 비즈니스 데이터가 더 핵심적이므로 빠르게 흐름
                         noiseSeed: Math.random() * 100
                     });
                 }
@@ -107,11 +108,11 @@
 
         function animate() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            time += 0.4; // 등고선 변형 및 흐름 속도 제어
+            time += 0.3; // 지형 변형 및 흐름 속도 제어
 
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
-            const maxRadius = Math.max(canvas.width, canvas.height) * 0.75;
+            const maxRadius = Math.max(canvas.width, canvas.height) * 0.85;
 
             rings.forEach((ring) => {
                 const baseRadius = 70 + ring.ratio * maxRadius;
@@ -120,16 +121,16 @@
                 // 🌟 최적화 핵심 1단계: 이번 프레임의 등고선 형상(궤도) 미리 연산하기
                 // -------------------------------------------------------------
                 const pathPoints = [];
-                const numPathPoints = 180; // 원을 180개의 정밀한 조각으로 나눔
+                const numPathPoints = 360; // 고해상도 지형을 위해 정밀도를 두 배로 늘림
                 
                 for (let i = 0; i < numPathPoints; i++) {
                     let a = (i / numPathPoints) * Math.PI * 2;
                     let nx = Math.cos(a);
                     let ny = Math.sin(a);
                     
-                    // 모든 점이 유기적인 공간 노이즈를 공유 (선이 꼬이지 않음)
-                    let noiseVal = fbm(nx * 1.2, ny * 1.2 + time * 0.004 + ring.noiseSeed * 0.05);
-                    let currentRadius = baseRadius + noiseVal * 150;
+                    // 모든 점이 유기적인 공간 노이즈 필드를 공유하여 winding 지형 생성
+                    let noiseVal = fbm(nx * 1.5, ny * 1.5 + time * 0.004 + ring.noiseSeed * 0.05);
+                    let currentRadius = baseRadius + noiseVal * 180; // 변형 진폭
 
                     let x = centerX + nx * currentRadius;
                     let y = centerY + ny * currentRadius;
@@ -140,8 +141,8 @@
                         const dist = Math.sqrt(dx * dx + dy * dy);
                         if (dist < mouse.currentRadius) {
                             const force = (mouse.currentRadius - dist) / mouse.currentRadius;
-                            x += (dx / dist) * force * 60;
-                            y += (dy / dist) * force * 60;
+                            x += (dx / dist) * force * 70;
+                            y += (dy / dist) * force * 70;
                         }
                     }
                     pathPoints.push({ x, y, radius: currentRadius });
@@ -170,21 +171,21 @@
                     };
                 }
 
-                ctx.font = "10px monospace";
+                ctx.font = "8px monospace"; // 레퍼런스처럼 미니멀하고 촘촘한 선을 위해 폰트 사이즈 축소
                 ctx.textBaseline = "middle";
 
-                // 등고선 둘레 길이에 맞추어 문장 개수 조절
-                const numTexts = Math.floor(baseRadius * 0.035);
+                // 등고선 둘레 길이에 맞추어 데이터가 가득 차도록 텍스트 수 조절
+                const numTexts = Math.floor(baseRadius * 0.04);
                 
                 for (let j = 0; j < numTexts; j++) {
                     // 🌟 유체 흐름의 핵심: 시작 각도에 'time * 속도'를 더해 텍스트가 선을 따라 전진하게 만듦
                     let textStartAngle = (j / numTexts) * Math.PI * 2 + (time * ring.flowSpeed);
                     
-                    const fullText = ring.textSet[j % ring.textSet.length];
                     let currentAngle = textStartAngle;
                     
-                    for (let k = 0; k < fullText.length; k++) {
-                        const char = fullText[k];
+                    // 🌟 연속성 확보의 핵심: 글자 한 자 한 자를 Seamless Stream에서 가져와 배치
+                    for (let k = 0; k < ring.fullTextStream.length; k++) {
+                        const char = ring.fullTextStream[k];
                         
                         // 미리 계산된 경로에서 현재 각도에 해당하는 스냅샷 좌표 추출
                         let pt = getPointOnPath(currentAngle);
