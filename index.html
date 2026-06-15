@@ -7,7 +7,7 @@
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            overflow: hidden; background-color: #050507; /* 깊고 고급스러운 다크 네이비 블랙 */
+            overflow: hidden; background-color: #030304; /* 깊고 어두운 하이엔드 블랙 */
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
         #topoCanvas {
@@ -23,8 +23,8 @@
             white-space: nowrap;
         }
         .subtitle {
-            color: #44444a; font-size: 0.8rem; letter-spacing: 0.3rem;
-            margin-top: 16px; text-transform: uppercase; font-weight: 500;
+            color: #38383f; font-size: 0.8rem; letter-spacing: 0.35rem;
+            margin-top: 18px; text-transform: uppercase; font-weight: 500;
         }
     </style>
 </head>
@@ -48,14 +48,14 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        const mouse = { x: null, y: null, radius: 200, currentRadius: 0 };
+        const mouse = { x: null, y: null, radius: 220, currentRadius: 0 };
         window.addEventListener('mousemove', (e) => {
             mouse.x = e.clientX; mouse.y = e.clientY;
-            mouse.currentRadius = Math.min(mouse.radius, mouse.currentRadius + 15);
+            mouse.currentRadius = Math.min(mouse.radius, mouse.currentRadius + 20);
         });
         window.addEventListener('mouseout', () => { mouse.x = null; mouse.y = null; mouse.currentRadius = 0; });
 
-        // --- 🛠️ 하이엔드 지형 구현을 위한 2D 수학적 노이즈 알고리즘 ---
+        // --- 🛠️ 하이엔드 지형 구현을 위한 수학적 노이즈 알고리즘 ---
         function hash(x, y) {
             let h = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453123;
             return h - Math.floor(h);
@@ -64,10 +64,9 @@
             let ix = Math.floor(x); let iy = Math.floor(y);
             let fx = x - ix; let fy = y - iy;
             let ux = fx * fx * (3.0 - 2.0 * fx); let uy = fy * fy * (3.0 - 2.0 * fy);
-            return a = hash(ix, iy), b = hash(ix + 1, iy), c = hash(ix, iy + 1), d = hash(ix + 1, iy + 1),
-                   a * (1 - ux) * (1 - uy) + b * ux * (1 - uy) + c * (1 - ux) * uy + d * ux * uy;
+            return hash(ix, iy) * (1 - ux) * (1 - uy) + hash(ix + 1, iy) * ux * (1 - uy) + hash(ix, iy + 1) * (1 - ux) * uy + hash(ix + 1, iy + 1) * ux * uy;
         }
-        function fbm(x, y) { // 다중 하모닉스를 중첩해 자연스러운 산맥 능선 생성
+        function fbm(x, y) { // 다중 하모닉스로 자연스러운 지형 생성
             let v = 0.0; let a = 0.5;
             for (let i = 0; i < 3; i++) {
                 v += a * noise2D(x, y); x *= 2.0; y *= 2.0; a *= 0.5;
@@ -76,7 +75,7 @@
         }
 
         let rings = [];
-        const totalRings = 40; // 레퍼런스처럼 극도로 촘촘하고 밀도 높은 선 유지를 위해 대폭 확장
+        const totalRings = 32; // 레퍼런스처럼 촘촘하면서도 너무 과하지 않게 등고선 수 조절
 
         async function init() {
             try {
@@ -86,10 +85,10 @@
                 for (let i = 0; i < totalRings; i++) {
                     const ratio = i / totalRings;
                     let textSet = dataLayers.inner;
-                    let opacity = 0.4 - (ratio * 0.25); // 안쪽은 선명하게, 바깥쪽은 아주 은은하게 배경화
+                    let opacity = 0.45 - (ratio * 0.25); // 안쪽은 선명하게, 바깥쪽은 아주 은은하게 배경화
                     
-                    if (ratio > 0.2 && ratio <= 0.6) textSet = dataLayers.middle;
-                    else if (ratio > 0.6) textSet = dataLayers.outer;
+                    if (ratio > 0.25 && ratio <= 0.65) textSet = dataLayers.middle;
+                    else if (ratio > 0.65) textSet = dataLayers.outer;
 
                     rings.push({ ratio, textSet, opacity });
                 }
@@ -104,8 +103,8 @@
             let nx = Math.cos(angle);
             let ny = Math.sin(angle);
             
-            // 핵심 분기점: 모든 링이 공간상에서 일관된 노이즈 필드를 공유하게 만듦 (선끼리 절대 꼬이지 않는 비결)
-            let noiseVal = fbm(nx * 1.4, ny * 1.4 + time * 0.008 + ratio * 0.3);
+            // 모든 링이 공간상에서 일관된 노이즈 필드를 공유하게 만듦 (선끼리 절대 꼬이지 않는 비결)
+            let noiseVal = fbm(nx * 1.3, ny * 1.3 + time * 0.007 + ratio * 0.4);
             let currentRadius = baseRadius + noiseVal * 160; // 변형 진폭
 
             let x = centerX + Math.cos(angle) * currentRadius;
@@ -117,11 +116,11 @@
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 if (dist < mouse.currentRadius) {
                     const force = (mouse.currentRadius - dist) / mouse.currentRadius;
-                    x += (dx / dist) * force * 50;
-                    y += (dy / dist) * force * 50;
+                    x += (dx / dist) * force * 55;
+                    y += (dy / dist) * force * 55;
                 }
             }
-            return { x, y };
+            return { x, y, currentRadius };
         }
 
         function animate() {
@@ -130,51 +129,54 @@
 
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
-            const maxRadius = Math.max(canvas.width, canvas.height) * 0.75;
+            const maxRadius = Math.max(canvas.width, canvas.height) * 0.72;
 
             rings.forEach((ring) => {
                 const baseRadius = 60 + ring.ratio * maxRadius;
-                const steps = 200; // 선을 매끄럽게 그리기 위한 정밀도
+                
+                // --- 선 제거 (요청사항 반영) ---
 
-                // --- 1단계: 실같이 가느다란 가이드 등고선(Stroke) 그리기 ---
-                ctx.beginPath();
-                for (let i = 0; i <= steps; i++) {
-                    let angle = (i / steps) * Math.PI * 2;
-                    let pt = getContourPoint(centerX, centerY, baseRadius, angle, ring.ratio);
-                    if (i === 0) ctx.moveTo(pt.x, pt.y);
-                    else ctx.lineTo(pt.x, pt.y);
-                }
-                ctx.strokeStyle = `rgba(255, 255, 255, ${ring.opacity * 0.35})`;
-                ctx.lineWidth = 0.6;
-                ctx.stroke();
-
-                // --- 2단계: 그 등고선 능선 위에 데이터 텍스트 안착시키기 ---
-                ctx.font = "9px monospace";
+                // --- 🌟 하이엔드 등고선의 핵심: 개별 글자 단위 정렬 알고리즘 ---
+                ctx.font = "10px monospace";
                 ctx.textBaseline = "middle";
 
-                // 반지름 길이에 비례해서 글자가 적당히 띄엄띄엄 배치되도록 세팅
-                const numTexts = Math.floor(baseRadius * 0.04); 
+                // 반지름 길이에 비례해서 텍스트 뭉텅이가 적당히 배치되도록 세팅
+                const numTexts = Math.floor(baseRadius * 0.035); 
                 
                 for (let j = 0; j < numTexts; j++) {
-                    let angle = (j / numTexts) * Math.PI * 2;
+                    let angle = (j / numTexts) * Math.PI * 2; // 텍스트 뭉텅이의 시작 위치
                     
-                    // 현재 위치(pt1)와 미세하게 앞선 위치(pt2)를 구해 선의 기울기(접선)를 계산
-                    let pt1 = getContourPoint(centerX, centerY, baseRadius, angle, ring.ratio);
-                    let pt2 = getContourPoint(centerX, centerY, baseRadius, angle + 0.01, ring.ratio);
+                    const fullText = ring.textSet[j % ring.textSet.length];
                     
-                    let tangentAngle = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x);
-                    const text = ring.textSet[j % ring.textSet.length];
+                    // 핵심: 텍스트 뭉텅이를 글자 단위로 쪼개서 개별적으로 정렬
+                    for (let k = 0; k < fullText.length; k++) {
+                        const char = fullText[k];
+                        
+                        // 현재 글자가 배치될 좌표(pt1)와 미세하게 앞선 좌표(pt2)를 구해 선의 기울기(접선)를 계산
+                        // 글자 간 간격을 일정하게 유지하기 위해 angle을 글자 너비만큼 미세하게 조정
+                        let pt1 = getContourPoint(centerX, centerY, baseRadius, angle, ring.ratio);
+                        
+                        // 글자 너비를 계산하여 다음 글자가 배치될 위치를 정교하게 조정 (Monospace지만 반지름 변화에 대응하기 위함)
+                        const charWidth = ctx.measureText(char).width;
+                        const angleOffset = charWidth / pt1.currentRadius; // 곡선 길이(너비)를 각도로 환산
+                        
+                        // 앞선 좌표를 구해 기울기(접선 각도) 계산
+                        let pt2 = getContourPoint(centerX, centerY, baseRadius, angle + 0.01, ring.ratio);
+                        
+                        let tangentAngle = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x);
 
-                    ctx.save();
-                    ctx.translate(pt1.x, pt1.y);
-                    ctx.rotate(tangentAngle); // 🌟 관람차 탈피의 핵심: 글자를 등고선 곡률에 맞춰 완벽히 눕힘
-                    
-                    // 글자 자체의 불투명도는 선보다 조금 더 주어 가독성 확보
-                    ctx.fillStyle = `rgba(255, 255, 255, ${ring.opacity * 1.2})`;
-                    
-                    // 약간의 오프셋을 주어 선 바로 위에 얹혀진 느낌 연출
-                    ctx.fillText(text, 0, -2); 
-                    ctx.restore();
+                        ctx.save();
+                        ctx.translate(pt1.x, pt1.y);
+                        ctx.rotate(tangentAngle); // 관람차 탈피의 핵심: 개별 글자를 등고선 곡률에 맞춰 완벽히 눕힘
+                        
+                        // 글자 자체의 불투명도를 조절하여 글자가 흐르는 것 같은 등고선 형태 구현
+                        ctx.fillStyle = `rgba(255, 255, 255, ${ring.opacity})`;
+                        ctx.fillText(char, 0, 0); 
+                        ctx.restore();
+                        
+                        // 다음 글자를 위해 angle 업데이트
+                        angle += angleOffset;
+                    }
                 }
             });
 
