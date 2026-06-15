@@ -7,7 +7,7 @@
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            overflow: hidden; background-color: #030304; /* 깊고 어두운 하이엔드 블랙 */
+            overflow: hidden; background-color: #030304;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
         #topoCanvas {
@@ -48,14 +48,15 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        const mouse = { x: null, y: null, radius: 220, currentRadius: 0 };
+        // 마우스 설정 (반응 반경 및 부드러운 감속값)
+        const mouse = { x: null, y: null, radius: 200, currentRadius: 0 };
         window.addEventListener('mousemove', (e) => {
             mouse.x = e.clientX; mouse.y = e.clientY;
-            mouse.currentRadius = Math.min(mouse.radius, mouse.currentRadius + 20);
+            mouse.currentRadius = Math.min(mouse.radius, mouse.currentRadius + 25);
         });
         window.addEventListener('mouseout', () => { mouse.x = null; mouse.y = null; mouse.currentRadius = 0; });
 
-        // --- 🛠️ 하이엔드 지형 구현을 위한 수학적 노이즈 알고리즘 ---
+        // Math Noise Functions
         function hash(x, y) {
             let h = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453123;
             return h - Math.floor(h);
@@ -66,7 +67,7 @@
             let ux = fx * fx * (3.0 - 2.0 * fx); let uy = fy * fy * (3.0 - 2.0 * fy);
             return hash(ix, iy) * (1 - ux) * (1 - uy) + hash(ix + 1, iy) * ux * (1 - uy) + hash(ix, iy + 1) * (1 - ux) * uy + hash(ix + 1, iy + 1) * ux * uy;
         }
-        function fbm(x, y) { // 다중 하모닉스로 자연스러운 지형 생성
+        function fbm(x, y) {
             let v = 0.0; let a = 0.5;
             for (let i = 0; i < 3; i++) {
                 v += a * noise2D(x, y); x *= 2.0; y *= 2.0; a *= 0.5;
@@ -75,7 +76,7 @@
         }
 
         let rings = [];
-        const totalRings = 32; // 레퍼런스처럼 촘촘하면서도 너무 과하지 않게 등고선 수 조절
+        const totalRings = 30; // 촘촘함을 유지하는 최적의 등고선 수
 
         async function init() {
             try {
@@ -85,12 +86,18 @@
                 for (let i = 0; i < totalRings; i++) {
                     const ratio = i / totalRings;
                     let textSet = dataLayers.inner;
-                    let opacity = 0.45 - (ratio * 0.25); // 안쪽은 선명하게, 바깥쪽은 아주 은은하게 배경화
+                    let opacity = 0.5 - (ratio * 0.3); // 안쪽 코어는 선명하게, 바깥은 은은하게 배경화
                     
-                    if (ratio > 0.25 && ratio <= 0.65) textSet = dataLayers.middle;
+                    if (ratio > 0.22 && ratio <= 0.65) textSet = dataLayers.middle;
                     else if (ratio > 0.65) textSet = dataLayers.outer;
 
-                    rings.push({ ratio, textSet, opacity });
+                    rings.push({ 
+                        ratio, 
+                        textSet, 
+                        opacity,
+                        flowSpeed: 0.0015 + (1 - ratio) * 0.002, // 안쪽 비즈니스 데이터가 더 핵심적이므로 빠르게 흐름
+                        noiseSeed: Math.random() * 100
+                    });
                 }
                 animate();
             } catch (e) { console.error("JSON 로드 에러:", e); }
@@ -98,84 +105,101 @@
 
         let time = 0;
 
-        // 특정 각도와 고유 반지름에서 변형된 등고선 좌표를 구해주는 함수
-        function getContourPoint(centerX, centerY, baseRadius, angle, ratio) {
-            let nx = Math.cos(angle);
-            let ny = Math.sin(angle);
-            
-            // 모든 링이 공간상에서 일관된 노이즈 필드를 공유하게 만듦 (선끼리 절대 꼬이지 않는 비결)
-            let noiseVal = fbm(nx * 1.3, ny * 1.3 + time * 0.007 + ratio * 0.4);
-            let currentRadius = baseRadius + noiseVal * 160; // 변형 진폭
-
-            let x = centerX + Math.cos(angle) * currentRadius;
-            let y = centerY + Math.sin(angle) * currentRadius;
-
-            // 마우스 호버 시 유체처럼 부드럽게 밀려나는 인터랙션
-            if (mouse.x !== null && mouse.y !== null) {
-                const dx = x - mouse.x; const dy = y - mouse.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < mouse.currentRadius) {
-                    const force = (mouse.currentRadius - dist) / mouse.currentRadius;
-                    x += (dx / dist) * force * 55;
-                    y += (dy / dist) * force * 55;
-                }
-            }
-            return { x, y, currentRadius };
-        }
-
         function animate() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            time += 0.3; // 지형이 살아 움직이는 속도 (너무 빠르지 않게 스멀스멀 흐르도록 제어)
+            time += 0.4; // 등고선 변형 및 흐름 속도 제어
 
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
-            const maxRadius = Math.max(canvas.width, canvas.height) * 0.72;
+            const maxRadius = Math.max(canvas.width, canvas.height) * 0.75;
 
             rings.forEach((ring) => {
-                const baseRadius = 60 + ring.ratio * maxRadius;
+                const baseRadius = 70 + ring.ratio * maxRadius;
                 
-                // --- 선 제거 (요청사항 반영) ---
+                // -------------------------------------------------------------
+                // 🌟 최적화 핵심 1단계: 이번 프레임의 등고선 형상(궤도) 미리 연산하기
+                // -------------------------------------------------------------
+                const pathPoints = [];
+                const numPathPoints = 180; // 원을 180개의 정밀한 조각으로 나눔
+                
+                for (let i = 0; i < numPathPoints; i++) {
+                    let a = (i / numPathPoints) * Math.PI * 2;
+                    let nx = Math.cos(a);
+                    let ny = Math.sin(a);
+                    
+                    // 모든 점이 유기적인 공간 노이즈를 공유 (선이 꼬이지 않음)
+                    let noiseVal = fbm(nx * 1.2, ny * 1.2 + time * 0.004 + ring.noiseSeed * 0.05);
+                    let currentRadius = baseRadius + noiseVal * 150;
 
-                // --- 🌟 하이엔드 등고선의 핵심: 개별 글자 단위 정렬 알고리즘 ---
+                    let x = centerX + nx * currentRadius;
+                    let y = centerY + ny * currentRadius;
+
+                    // 마우스 호버 시 등고선 궤도 자체를 부드럽게 밀어냄 (고무줄 효과)
+                    if (mouse.x !== null && mouse.y !== null) {
+                        const dx = x - mouse.x; const dy = y - mouse.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < mouse.currentRadius) {
+                            const force = (mouse.currentRadius - dist) / mouse.currentRadius;
+                            x += (dx / dist) * force * 60;
+                            y += (dy / dist) * force * 60;
+                        }
+                    }
+                    pathPoints.push({ x, y, radius: currentRadius });
+                }
+
+                // -------------------------------------------------------------
+                // 🌟 최적화 핵심 2단계: 연산된 궤도 좌표를 기반으로 텍스트 초고속 보간 배치
+                // -------------------------------------------------------------
+                function getPointOnPath(targetAngle) {
+                    // 입력 각도를 0 ~ 2*PI 범위로 정규화
+                    targetAngle = ((targetAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+                    let indexFloat = (targetAngle / (Math.PI * 2)) * numPathPoints;
+                    let idx1 = Math.floor(indexFloat) % numPathPoints;
+                    let idx2 = (idx1 + 1) % numPathPoints;
+                    let t = indexFloat - Math.floor(indexFloat);
+                    
+                    let p1 = pathPoints[idx1];
+                    let p2 = pathPoints[idx2];
+                    
+                    // 선형 보간으로 정확한 x, y 좌표 및 접선 기울기 도출
+                    return {
+                        x: p1.x * (1 - t) + p2.x * t,
+                        y: p1.y * (1 - t) + p2.y * t,
+                        currentRadius: p1.radius * (1 - t) + p2.radius * t,
+                        tangent: Math.atan2(p2.y - p1.y, p2.x - p1.x)
+                    };
+                }
+
                 ctx.font = "10px monospace";
                 ctx.textBaseline = "middle";
 
-                // 반지름 길이에 비례해서 텍스트 뭉텅이가 적당히 배치되도록 세팅
-                const numTexts = Math.floor(baseRadius * 0.035); 
+                // 등고선 둘레 길이에 맞추어 문장 개수 조절
+                const numTexts = Math.floor(baseRadius * 0.035);
                 
                 for (let j = 0; j < numTexts; j++) {
-                    let angle = (j / numTexts) * Math.PI * 2; // 텍스트 뭉텅이의 시작 위치
+                    // 🌟 유체 흐름의 핵심: 시작 각도에 'time * 속도'를 더해 텍스트가 선을 따라 전진하게 만듦
+                    let textStartAngle = (j / numTexts) * Math.PI * 2 + (time * ring.flowSpeed);
                     
                     const fullText = ring.textSet[j % ring.textSet.length];
+                    let currentAngle = textStartAngle;
                     
-                    // 핵심: 텍스트 뭉텅이를 글자 단위로 쪼개서 개별적으로 정렬
                     for (let k = 0; k < fullText.length; k++) {
                         const char = fullText[k];
                         
-                        // 현재 글자가 배치될 좌표(pt1)와 미세하게 앞선 좌표(pt2)를 구해 선의 기울기(접선)를 계산
-                        // 글자 간 간격을 일정하게 유지하기 위해 angle을 글자 너비만큼 미세하게 조정
-                        let pt1 = getContourPoint(centerX, centerY, baseRadius, angle, ring.ratio);
+                        // 미리 계산된 경로에서 현재 각도에 해당하는 스냅샷 좌표 추출
+                        let pt = getPointOnPath(currentAngle);
                         
-                        // 글자 너비를 계산하여 다음 글자가 배치될 위치를 정교하게 조정 (Monospace지만 반지름 변화에 대응하기 위함)
-                        const charWidth = ctx.measureText(char).width;
-                        const angleOffset = charWidth / pt1.currentRadius; // 곡선 길이(너비)를 각도로 환산
-                        
-                        // 앞선 좌표를 구해 기울기(접선 각도) 계산
-                        let pt2 = getContourPoint(centerX, centerY, baseRadius, angle + 0.01, ring.ratio);
-                        
-                        let tangentAngle = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x);
-
                         ctx.save();
-                        ctx.translate(pt1.x, pt1.y);
-                        ctx.rotate(tangentAngle); // 관람차 탈피의 핵심: 개별 글자를 등고선 곡률에 맞춰 완벽히 눕힘
+                        ctx.translate(pt.x, pt.y);
+                        ctx.rotate(pt.tangent); // 개별 글자가 지형 방향에 맞춰 완벽히 누움
                         
-                        // 글자 자체의 불투명도를 조절하여 글자가 흐르는 것 같은 등고선 형태 구현
                         ctx.fillStyle = `rgba(255, 255, 255, ${ring.opacity})`;
-                        ctx.fillText(char, 0, 0); 
+                        ctx.fillText(char, 0, 0);
                         ctx.restore();
                         
-                        // 다음 글자를 위해 angle 업데이트
-                        angle += angleOffset;
+                        // 다음 글자가 겹치지 않도록 글자 너비만큼 각도 전진 (+1px 자간 추가)
+                        const charWidth = ctx.measureText(char).width + 1;
+                        currentAngle += charWidth / pt.currentRadius;
                     }
                 }
             });
