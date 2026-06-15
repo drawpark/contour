@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DATA TO INSIGHT | Product Designer</title>
+    <style>
+        /* 1. 기본 스타일 리셋 및 다크모드 배경 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* 2. 인터랙티브 캔버스 레이어 */
+        #topoCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* 3. 중앙 타이틀 (텍스트 레이어) */
+        .center-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 10; /* 캔버스 위로 올림 */
+            pointer-events: none; /* 마우스 이벤트가 캔버스에 전달되도록 함 */
+        }
+
+        .title {
+            color: #ffffff;
+            font-size: 4rem;
+            font-weight: 800;
+            letter-spacing: 0.5rem;
+            margin: 0;
+            text-transform: uppercase;
+            text-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        .subtitle {
+            color: #888888;
+            font-size: 1rem;
+            letter-spacing: 0.2rem;
+            margin-top: 10px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="center-container">
+        <h1 class="title">DATA TO INSIGHT</h1>
+        <div class="subtitle">Generic Product & SaaS Designer Portfolio</div>
+    </div>
+
+    <canvas id="topoCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('topoCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 창 크기 맞추기
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 마우스 좌표 객체
+        const mouse = { x: null, y: null, radius: 150 };
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.x;
+            mouse.y = e.y;
+        });
+        window.addEventListener('mouseout', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // 3단 범용 데이터 텍스트 정의
+        const dataLayers = {
+            outer: ["var(--color-surface)", "breakpoint:1440px", "component:data-grid", "border-radius:12px", "state:hover", "padding:16px", "gap:8px"],
+            middle: ["API_status:200_OK", "workflow_latency:14ms", "data_pipeline:active", "auth_token:valid", "cache_status:HIT"],
+            inner: ["conversion_rate:+14.5%", "task_duration:-82%", "user_retention:optimized", "ROI:increased_3x", "bounce_rate:-24%"]
+        };
+
+        // 등고선 링(Ring) 객체 배열 생성
+        const rings = [];
+        const totalRings = 15; // 등고선 총 개수
+
+        for (let i = 0; i < totalRings; i++) {
+            // 안쪽(0)에서 바깥쪽(1)까지의 비율
+            const ratio = i / totalRings; 
+            
+            // 레이어에 따른 텍스트 세트 배정
+            let textSet = dataLayers.inner;
+            let color = 'rgba(255, 255, 255, 0.8)'; // 안쪽: 비즈니스 가치 (밝게)
+            
+            if (ratio > 0.3 && ratio <= 0.7) {
+                textSet = dataLayers.middle;
+                color = 'rgba(255, 255, 255, 0.4)'; // 중간: 시스템/백엔드
+            } else if (ratio > 0.7) {
+                textSet = dataLayers.outer;
+                color = 'rgba(255, 255, 255, 0.15)'; // 바깥쪽: UI 토큰 (은은하게)
+            }
+
+            rings.push({
+                baseRadius: 100 + ratio * (Math.max(window.innerWidth, window.innerHeight) * 0.6),
+                textSet: textSet,
+                color: color,
+                seed: Math.random() * 100, // 각 링마다 흐르는 타이밍 다르게 고유값 부여
+                speed: 0.002 + (1 - ratio) * 0.003 // 안쪽이 조금 더 빠르게 흐르도록 설정
+            });
+        }
+
+        // 애니메이션 루프
+        let time = 0;
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            time += 0.5;
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            rings.forEach((ring) => {
+                ctx.fillStyle = ring.color;
+                ctx.font = "11px monospace";
+
+                // 하나의 링 위에 원형으로 텍스트 배치
+                const numTexts = Math.floor(ring.baseRadius * 0.1); 
+                
+                for (let j = 0; j < numTexts; j++) {
+                    const angle = (j / numTexts) * Math.PI * 2 + (time * ring.speed);
+                    
+                    // 1. 가만히 있어도 흐르고 찌그러지는 '노이즈/웨이브' 수학 공식 (Idle 애니메이션)
+                    // 사인곡선을 여러 개 중첩해서 등고선이 합쳐지거나 흐르는 느낌 연출
+                    const waveOffset = Math.sin(angle * 4 + time * 0.01 + ring.seed) * 20 
+                                     + Math.cos(angle * 2 - time * 0.02) * 15;
+                    
+                    let currentRadius = ring.baseRadius + waveOffset;
+
+                    // 원래 생성될 좌표 계산
+                    let x = centerX + Math.cos(angle) * currentRadius;
+                    let y = centerY + Math.sin(angle) * currentRadius;
+
+                    // 2. 마우스 호버 반응 애니메이션 (밀려나기 처리)
+                    if (mouse.x !== null && mouse.y !== null) {
+                        const dx = x - mouse.x;
+                        const dy = y - mouse.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+
+                        if (distance < mouse.radius) {
+                            // 마우스와 가까울수록 강하게 밀어냄
+                            const force = (mouse.radius - distance) / mouse.radius;
+                            const push = force * 40; // 밀려나는 강도
+                            
+                            x += (dx / distance) * push;
+                            y += (dy / distance) * push;
+                        }
+                    }
+
+                    // 텍스트 그리기
+                    const text = ring.textSet[j % ring.textSet.length];
+                    
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(angle + Math.PI / 2); // 등고선 선 방향에 맞추어 텍스트 회전
+                    ctx.fillText(text, 0, 0);
+                    ctx.restore();
+                }
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
