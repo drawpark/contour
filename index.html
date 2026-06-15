@@ -7,193 +7,252 @@
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            overflow: hidden; background-color: #030304; /* 깊고 고급스러운 다크 네이비 블랙 */
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden; 
+            background-color: #111111; /* 레퍼런스 느낌의 무광 다크 그레이 */
+            font-family: monospace;
         }
         #topoCanvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
         }
-        .center-container {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            text-align: center; z-index: 10; pointer-events: none;
-        }
-        .title {
-            color: #ffffff; font-size: 3.8rem; font-weight: 700;
-            letter-spacing: 0.8rem; margin: 0; text-transform: uppercase;
-            white-space: nowrap; text-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
-        }
-        .subtitle {
-            color: #38383f; font-size: 0.8rem; letter-spacing: 0.35rem;
-            margin-top: 18px; text-transform: uppercase; font-weight: 500;
-        }
     </style>
 </head>
 <body>
-
-    <div class="center-container">
-        <h1 class="title">DATA TO INSIGHT</h1>
-        <div class="subtitle">Generic Product & SaaS Designer Portfolio</div>
-    </div>
-
     <canvas id="topoCanvas"></canvas>
 
     <script>
         const canvas = document.getElementById('topoCanvas');
         const ctx = canvas.getContext('2d');
 
+        // 최적화를 위한 그리드 설정 (값이 작을수록 정교하지만 연산량 증가)
+        const GRID_RES = 16; 
+        let cols, rows;
+        let grid = [];
+
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            cols = Math.ceil(canvas.width / GRID_RES) + 1;
+            rows = Math.ceil(canvas.height / GRID_RES) + 1;
         }
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // --- 🛠️ 하이엔드 지형 구현을 위한 수학적 노이즈 알고리즘 ---
-        // 복잡도를 극도로 낮춰 렉을 방지하면서, 부드러운 winding 곡선을 생성합니다.
-        function hash(x, y) {
-            let h = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453123;
+        // --- 1. 가볍고 강력한 3D 노이즈 함수 ---
+        function hash(x, y, z) {
+            let h = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453123;
             return h - Math.floor(h);
         }
-        function noise2D(x, y) {
-            let ix = Math.floor(x); let iy = Math.floor(y);
-            let fx = x - ix; let fy = y - iy;
-            let ux = fx * fx * (3.0 - 2.0 * fx); let uy = fy * fy * (3.0 - 2.0 * fy);
-            return hash(ix, iy) * (1 - ux) * (1 - uy) + hash(ix + 1, iy) * ux * (1 - uy) + hash(ix, iy + 1) * (1 - ux) * uy + hash(ix + 1, iy + 1) * ux * uy;
-        }
-        function fbm(x, y) { // 다중 하모닉스를 중첩해 자연스러운 산맥 능선 생성
-            let v = 0.0; let a = 0.5;
-            for (let i = 0; i < 3; i++) {
-                v += a * noise2D(x, y); x *= 2.0; y *= 2.0; a *= 0.5;
-            }
-            return v;
+        function noise3D(x, y, z) {
+            let ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+            let fx = x - ix, fy = y - iy, fz = z - iz;
+            let ux = fx * fx * (3.0 - 2.0 * fx), uy = fy * fy * (3.0 - 2.0 * fy), uz = fz * fz * (3.0 - 2.0 * fz);
+            let n000 = hash(ix, iy, iz), n100 = hash(ix + 1, iy, iz), n010 = hash(ix, iy + 1, iz), n110 = hash(ix + 1, iy + 1, iz);
+            let n001 = hash(ix, iy, iz + 1), n101 = hash(ix + 1, iy, iz + 1), n011 = hash(ix, iy + 1, iz + 1), n111 = hash(ix + 1, iy + 1, iz + 1);
+            let nx00 = n000 * (1 - ux) + n100 * ux, nx10 = n010 * (1 - ux) + n110 * ux;
+            let nx01 = n001 * (1 - ux) + n101 * ux, nx11 = n011 * (1 - ux) + n111 * ux;
+            let nxy0 = nx00 * (1 - uy) + nx10 * uy, nxy1 = nx01 * (1 - uy) + nx11 * uy;
+            return nxy0 * (1 - uz) + nxy1 * uz;
         }
 
-        let rings = [];
-        const totalRings = 40; // 레퍼런스처럼 극도로 촘촘하고 밀도 높은 선 유지를 위해 대폭 확장
+        let fullTextStream = "DATA_PIPELINE_ACTIVE:200_OK // PIPELINE_LATENCY:14MS // USER_RETENTION:OPTIMIZED // ";
         
         async function init() {
             try {
                 const response = await fetch('data.json');
-                const dataLayers = await response.json();
-                
-                for (let i = 0; i < totalRings; i++) {
-                    const ratio = i / totalRings;
-                    let textSet = dataLayers.inner;
-                    let opacity = 0.5 - (ratio * 0.3); // 안쪽 코어는 선명하게, 바깥은 은은하게 배경화
-                    
-                    if (ratio > 0.22 && ratio <= 0.65) textSet = dataLayers.middle;
-                    else if (ratio > 0.65) textSet = dataLayers.outer;
-
-                    // 데이터의 끊김 없는 연속성을 위해 JSON 데이터 전체를 하나의 끊김 없는 데이터 스트림으로 통합
-                    // 문장 사이 공백 추가로 seamless 흐름
-                    rings.push({ 
-                        ratio, 
-                        fullTextStream: textSet.join(" ") + " ", 
-                        opacity,
-                        flowOffset: 0,
-                        flowSpeed: 0.001 + (1 - ratio) * 0.0015, // 안쪽 비즈니스 데이터가 더 핵심적이므로 빠르게 흐름
-                        noiseSeed: Math.random() * 100
-                    });
-                }
-                animate();
-            } catch (e) { console.error("JSON 로드 에러:", e); }
+                const data = await response.json();
+                fullTextStream = [...data.inner, ...data.middle, ...data.outer].join(" // ") + " // ";
+            } catch (e) {
+                console.log("data.json 로드 실패, 기본 텍스트를 사용합니다.");
+            }
+            animate();
         }
 
         let time = 0;
+        const FONT_SIZE = 10;
+        const CHAR_WIDTH = 6; // measureText 대신 고정폭 사용 (60FPS 유지의 핵심)
 
         function animate() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            time += 0.3; // 지형 변형 및 흐름 속도 제어
+            time += 0.003; // 지형이 변하는 속도
 
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const maxRadius = Math.max(canvas.width, canvas.height) * 0.85;
-
-            rings.forEach((ring) => {
-                const baseRadius = 70 + ring.ratio * maxRadius;
-                
-                // --- 1단계: 선 제거 (요청사항 반영) ---
-
-                // --- 🌟 최적화 핵심 1단계: 이번 프레임의 등고선 형상(궤도) 미리 연산하기
-                // 진짜 지형 노이즈를 적용하여 유기적인 winding 지형 생성
-                const pathPoints = [];
-                const numPathPoints = 360; // 고해상도 지형을 위해 정밀도를 두 배로 늘림
-                
-                for (let i = 0; i < numPathPoints; i++) {
-                    let a = (i / numPathPoints) * Math.PI * 2;
-                    let nx = Math.cos(a);
-                    let ny = Math.sin(a);
-                    
-                    // 핵심 분기점: 모든 링이 공간상에서 일관된 노이즈 필드를 공유하게 만듦 (선끼리 절대 꼬이지 않는 비결)
-                    // 독립된 원형 궤도를 찌그러뜨리는 게 아니라, 거대한 Perlin Noise Heightmap Field를 구축
-                    // 각 등고선은 이 필드의 특정 높이(Contour Level)를 따라 계산되어, 레퍼런스처럼 비대칭적이고 예측 불가능하지만 유연하게 winding하는 진짜 지형의 형상을 가짐
-                    let noiseVal = fbm(nx * 1.5, ny * 1.5 + time * 0.004 + ring.noiseSeed * 0.05);
-                    let currentRadius = baseRadius + noiseVal * 180; // 변형 진폭
-
-                    let x = centerX + nx * currentRadius;
-                    let y = centerY + ny * currentRadius;
-                    pathPoints.push({ x, y, radius: currentRadius });
+            // 1. 노이즈 필드 그리드 생성
+            for (let i = 0; i < cols; i++) {
+                grid[i] = [];
+                for (let j = 0; j < rows; j++) {
+                    // x, y 배율이 작을수록 블롭(덩어리)이 커짐 (레퍼런스 이미지 느낌)
+                    grid[i][j] = noise3D(i * 0.05, j * 0.05, time); 
                 }
+            }
 
-                // 🌟 최적화 핵심 2단계: 연산된 궤도 좌표를 기반으로 텍스트 초고속 보간 배치
-                function getPointOnPath(targetAngle) {
-                    // 입력 각도를 0 ~ 2*PI 범위로 정규화
-                    targetAngle = ((targetAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-                    let indexFloat = (targetAngle / (Math.PI * 2)) * numPathPoints;
-                    let idx1 = Math.floor(indexFloat) % numPathPoints;
-                    let idx2 = (idx1 + 1) % numPathPoints;
-                    let t = indexFloat - Math.floor(indexFloat);
-                    
-                    let p1 = pathPoints[idx1];
-                    let p2 = pathPoints[idx2];
-                    
-                    // 선형 보간으로 정확한 x, y 좌표 및 접선 기울기 도출
-                    return {
-                        x: p1.x * (1 - t) + p2.x * t,
-                        y: p1.y * (1 - t) + p2.y * t,
-                        currentRadius: p1.radius * (1 - t) + p2.radius * t,
-                        tangent: Math.atan2(p2.y - p1.y, p2.x - p1.x)
-                    };
-                }
+            // 2. 등고선 레벨(Threshold) 설정
+            let thresholds = [];
+            for(let i = 0; i < 20; i++) {
+                thresholds.push(-0.6 + (i / 19) * 1.2); // -0.6 ~ 0.6 범위의 20겹 선
+            }
 
-                ctx.font = "8px monospace"; // 레퍼런스처럼 미니멀하고 촘촘한 선을 위해 폰트 사이즈 축소
-                ctx.textBaseline = "middle";
+            let allPaths = [];
 
-                // 등고선 둘레 길이에 맞추어 데이터가 가득 차도록 텍스트 수 조절
-                const numTexts = Math.floor(baseRadius * 0.04);
-                
-                for (let j = 0; j < numTexts; j++) {
-                    // 🌟 유체 흐름의 핵심: 시작 각도에 'time * 속도'를 더해 텍스트가 선을 따라 전진하게 만듦
-                    let textStartAngle = (j / numTexts) * Math.PI * 2 + (time * ring.flowSpeed);
-                    
-                    let currentAngle = textStartAngle;
-                    
-                    // 🌟 연속성 확보의 핵심: 글자 한 자 한 자를 Seamless Stream에서 가져와 배치
-                    for (let k = 0; k < ring.fullTextStream.length; k++) {
-                        const char = ring.fullTextStream[k];
-                        
-                        // 미리 계산된 경로에서 현재 각도에 해당하는 스냅샷 좌표 추출
-                        let pt = getPointOnPath(currentAngle);
-                        
-                        ctx.save();
-                        ctx.translate(pt.x, pt.y);
-                        ctx.rotate(pt.tangent); // 개별 글자가 지형 방향에 맞춰 완벽히 누움
-                        
-                        ctx.fillStyle = `rgba(255, 255, 255, ${ring.opacity})`;
-                        ctx.fillText(char, 0, 0);
-                        ctx.restore();
-                        
-                        // 다음 글자가 겹치지 않도록 글자 너비만큼 각도 전진 (+1px 자간 추가)
-                        const charWidth = ctx.measureText(char).width + 1;
-                        currentAngle += charWidth / pt.currentRadius;
+            // 3. Marching Squares 알고리즘 (지형 높이 맵에서 등고선 추출)
+            for (let t of thresholds) {
+                let segments = [];
+                for (let i = 0; i < cols - 1; i++) {
+                    for (let j = 0; j < rows - 1; j++) {
+                        let v0 = grid[i][j];
+                        let v1 = grid[i + 1][j];
+                        let v2 = grid[i + 1][j + 1];
+                        let v3 = grid[i][j + 1];
+
+                        let state = 0;
+                        if (v0 > t) state |= 1;
+                        if (v1 > t) state |= 2;
+                        if (v2 > t) state |= 4;
+                        if (v3 > t) state |= 8;
+
+                        if (state === 0 || state === 15) continue;
+
+                        let p = (vA, vB) => {
+                            let diff = vB - vA;
+                            if (Math.abs(diff) < 0.0001) return 0.5;
+                            return (t - vA) / diff;
+                        };
+
+                        let top = [i + p(v0, v1), j];
+                        let right = [i + 1, j + p(v1, v2)];
+                        let bottom = [i + p(v3, v2), j + 1];
+                        let left = [i, j + p(v0, v3)];
+
+                        let pts = [];
+                        if (state === 1 || state === 14) pts.push(left, top);
+                        else if (state === 2 || state === 13) pts.push(top, right);
+                        else if (state === 4 || state === 11) pts.push(right, bottom);
+                        else if (state === 8 || state === 7) pts.push(bottom, left);
+                        else if (state === 3 || state === 12) pts.push(left, right);
+                        else if (state === 6 || state === 9) pts.push(top, bottom);
+                        else if (state === 5) pts.push(left, top, right, bottom);
+                        else if (state === 10) pts.push(top, right, bottom, left);
+
+                        if (pts.length === 2) segments.push({p1: pts[0], p2: pts[1]});
+                        if (pts.length === 4) {
+                            segments.push({p1: pts[0], p2: pts[1]});
+                            segments.push({p1: pts[2], p2: pts[3]});
+                        }
                     }
                 }
-            });
+
+                // 4. 추출된 선분(Segment)들을 이어붙여 하나의 길쭉한 Path로 만듦
+                let ptKey = p => p[0].toFixed(2) + ',' + p[1].toFixed(2);
+                let adj = new Map();
+                for (let s of segments) {
+                    let k1 = ptKey(s.p1), k2 = ptKey(s.p2);
+                    if (!adj.has(k1)) adj.set(k1, []);
+                    if (!adj.has(k2)) adj.set(k2, []);
+                    adj.get(k1).push({k: k2, pt: s.p2, seg: s});
+                    adj.get(k2).push({k: k1, pt: s.p1, seg: s});
+                }
+
+                let visitedSegs = new Set();
+                for (let s of segments) {
+                    if (visitedSegs.has(s)) continue;
+                    let path = [s.p1, s.p2];
+                    visitedSegs.add(s);
+                    
+                    let currK = ptKey(s.p2);
+                    while(true) {
+                        let nexts = adj.get(currK) || [];
+                        let found = false;
+                        for (let n of nexts) {
+                            if (!visitedSegs.has(n.seg)) {
+                                visitedSegs.add(n.seg);
+                                path.push(n.pt);
+                                currK = n.k;
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) break;
+                    }
+                    
+                    currK = ptKey(s.p1);
+                    while(true) {
+                        let nexts = adj.get(currK) || [];
+                        let found = false;
+                        for (let n of nexts) {
+                            if (!visitedSegs.has(n.seg)) {
+                                visitedSegs.add(n.seg);
+                                path.unshift(n.pt);
+                                currK = n.k;
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) break;
+                    }
+                    
+                    // Path 스무딩 (부드러운 곡선을 위해 점들을 이동평균 처리)
+                    for (let iter = 0; iter < 2; iter++) {
+                        let smoothed = [path[0]];
+                        for (let k = 1; k < path.length - 1; k++) {
+                            smoothed.push([
+                                path[k][0]*0.5 + path[k-1][0]*0.25 + path[k+1][0]*0.25,
+                                path[k][1]*0.5 + path[k-1][1]*0.25 + path[k+1][1]*0.25
+                            ]);
+                        }
+                        smoothed.push(path[path.length - 1]);
+                        path = smoothed;
+                    }
+                    allPaths.push(path);
+                }
+            }
+
+            // 5. 부드럽게 이어지는 Path 위에 글자 한 자씩 눕혀서 그리기
+            ctx.font = `${FONT_SIZE}px monospace`;
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+
+            let globalFlow = (time * 15) % 100; // 글자가 선을 타고 흐르는 속도
+
+            for (let path of allPaths) {
+                if(path.length < 5) continue; // 너무 짧은 파편은 무시
+
+                let currentLen = globalFlow; 
+                let charIdx = 0;
+                let pIdx = 0;
+
+                while(pIdx < path.length - 1) {
+                    let p1 = path[pIdx], p2 = path[pIdx+1];
+                    let dx = (p2[0] - p1[0]) * GRID_RES;
+                    let dy = (p2[1] - p1[1]) * GRID_RES;
+                    let dist = Math.hypot(dx, dy);
+
+                    if (currentLen + CHAR_WIDTH <= dist) {
+                        let t = currentLen / dist;
+                        let cx = p1[0] * GRID_RES + dx * t;
+                        let cy = p1[1] * GRID_RES + dy * t;
+                        let angle = Math.atan2(dy, dx);
+
+                        ctx.save();
+                        ctx.translate(cx, cy);
+                        ctx.rotate(angle);
+                        // 레퍼런스처럼 선은 빼고 오직 글자만 찍습니다.
+                        ctx.fillText(fullTextStream[charIdx % fullTextStream.length], 0, 0);
+                        ctx.restore();
+
+                        currentLen += CHAR_WIDTH;
+                        charIdx++;
+                    } else {
+                        currentLen -= dist;
+                        pIdx++;
+                    }
+                }
+            }
 
             requestAnimationFrame(animate);
         }
 
-        init();
+        // 구동 시작
+        document.fonts.ready.then(() => {
+            init();
+        });
     </script>
 </body>
 </html>
