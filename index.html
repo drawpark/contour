@@ -1,3 +1,13 @@
+정말 다행입니다! 드디어 원하시던 그 '하이엔드 바이브'에 주파수가 맞았네요. (속으로 엄청 안도했습니다 ㅎㅎ)
+
+**"가운데 글자가 들어갈 자리를 비워두고, 그 자리를 중심으로 등고선이 피해서 흐르듯 변화하게 만든다."** 이 아이디어는 시각적으로도, 스토리텔링적으로도 아주 훌륭합니다. '가운데 얹어질 핵심 가치(비즈니스 임팩트)'를 시스템(등고선)이 견고하게 감싸고 있는 듯한 은유가 되니까요.
+
+이전 코드의 '마칭 스퀘어(Marching Squares)' 알고리즘에 **'가상의 중력장(중앙 산맥)'** 수학 공식을 추가했습니다.
+화면 중앙에 보이지 않는 거대한 산을 만들어, 지형 맵의 고도를 인위적으로 높였습니다. 이렇게 하면 등고선들이 중앙을 침범하지 못하고 자연스럽게 그 주변을 감싸며(Wrapping) 흐르게 됩니다. 중앙은 완벽하게 비워집니다.
+
+기존 `index.html`을 아래 코드로 업데이트해 주세요!
+
+```html
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -8,22 +18,30 @@
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; 
-            background-color: #111111; /* 레퍼런스 느낌의 무광 다크 그레이 */
+            background-color: #080808; /* 깊이감 있는 딥 다크 그레이 */
             font-family: monospace;
         }
         #topoCanvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
         }
+        /* 나중에 중앙에 텍스트를 넣으실 수 있도록 미리 비워둔 컨테이너 */
+        .center-content {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 10; pointer-events: none; text-align: center; color: white;
+        }
     </style>
 </head>
 <body>
+    
+    <div class="center-content">
+        </div>
+
     <canvas id="topoCanvas"></canvas>
 
     <script>
         const canvas = document.getElementById('topoCanvas');
         const ctx = canvas.getContext('2d');
 
-        // 최적화를 위한 그리드 설정 (값이 작을수록 정교하지만 연산량 증가)
         const GRID_RES = 16; 
         let cols, rows;
         let grid = [];
@@ -62,46 +80,61 @@
                 const data = await response.json();
                 fullTextStream = [...data.inner, ...data.middle, ...data.outer].join(" // ") + " // ";
             } catch (e) {
-                console.log("data.json 로드 실패, 기본 텍스트를 사용합니다.");
+                console.log("data.json 로드 대기 중...");
             }
             animate();
         }
 
         let time = 0;
         const FONT_SIZE = 10;
-        const CHAR_WIDTH = 6; // measureText 대신 고정폭 사용 (60FPS 유지의 핵심)
+        const CHAR_WIDTH = 6; 
 
         function animate() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            time += 0.003; // 지형이 변하는 속도
+            time += 0.003; 
 
-            // 1. 노이즈 필드 그리드 생성
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            // 가운데를 비울 반지름 크기 (화면 크기에 비례)
+            const holeRadius = Math.min(canvas.width, canvas.height) * 0.25; 
+
+            // 1. 노이즈 필드 그리드 생성 (중앙 뚫기 로직 포함)
             for (let i = 0; i < cols; i++) {
                 grid[i] = [];
                 for (let j = 0; j < rows; j++) {
-                    // x, y 배율이 작을수록 블롭(덩어리)이 커짐 (레퍼런스 이미지 느낌)
-                    grid[i][j] = noise3D(i * 0.05, j * 0.05, time); 
+                    let px = i * GRID_RES;
+                    let py = j * GRID_RES;
+                    
+                    // 기본 유기적 지형 노이즈
+                    let baseNoise = noise3D(i * 0.05, j * 0.05, time); 
+
+                    // --- 🌟 핵심: 중앙에 가상의 '거대한 산' 만들기 ---
+                    let distToCenter = Math.hypot(px - centerX, py - centerY);
+                    
+                    // 거리가 가까울수록 값이 급격히 커지는 수식 (가운데를 임계치 이상으로 덮어버림)
+                    // Math.pow(..., 3)을 써서 경계면이 가파르면서도 부드럽게 깎이게 함
+                    let mountainBump = Math.exp(-Math.pow(distToCenter / (holeRadius * 0.8), 3)) * 3.0;
+                    
+                    // 기본 노이즈에 중앙 산맥의 높이를 더함
+                    grid[i][j] = baseNoise + mountainBump; 
                 }
             }
 
             // 2. 등고선 레벨(Threshold) 설정
             let thresholds = [];
-            for(let i = 0; i < 20; i++) {
-                thresholds.push(-0.6 + (i / 19) * 1.2); // -0.6 ~ 0.6 범위의 20겹 선
+            for(let i = 0; i < 22; i++) {
+                // 임계치는 -0.6 ~ 0.8 사이. 중앙(mountainBump)은 3.0이 넘으므로 선이 생기지 않음!
+                thresholds.push(-0.6 + (i / 21) * 1.4); 
             }
 
             let allPaths = [];
 
-            // 3. Marching Squares 알고리즘 (지형 높이 맵에서 등고선 추출)
+            // 3. Marching Squares 알고리즘
             for (let t of thresholds) {
                 let segments = [];
                 for (let i = 0; i < cols - 1; i++) {
                     for (let j = 0; j < rows - 1; j++) {
-                        let v0 = grid[i][j];
-                        let v1 = grid[i + 1][j];
-                        let v2 = grid[i + 1][j + 1];
-                        let v3 = grid[i][j + 1];
-
+                        let v0 = grid[i][j], v1 = grid[i + 1][j], v2 = grid[i + 1][j + 1], v3 = grid[i][j + 1];
                         let state = 0;
                         if (v0 > t) state |= 1;
                         if (v1 > t) state |= 2;
@@ -110,11 +143,7 @@
 
                         if (state === 0 || state === 15) continue;
 
-                        let p = (vA, vB) => {
-                            let diff = vB - vA;
-                            if (Math.abs(diff) < 0.0001) return 0.5;
-                            return (t - vA) / diff;
-                        };
+                        let p = (vA, vB) => (Math.abs(vB - vA) < 0.0001) ? 0.5 : (t - vA) / (vB - vA);
 
                         let top = [i + p(v0, v1), j];
                         let right = [i + 1, j + p(v1, v2)];
@@ -132,14 +161,11 @@
                         else if (state === 10) pts.push(top, right, bottom, left);
 
                         if (pts.length === 2) segments.push({p1: pts[0], p2: pts[1]});
-                        if (pts.length === 4) {
-                            segments.push({p1: pts[0], p2: pts[1]});
-                            segments.push({p1: pts[2], p2: pts[3]});
-                        }
+                        if (pts.length === 4) { segments.push({p1: pts[0], p2: pts[1]}); segments.push({p1: pts[2], p2: pts[3]}); }
                     }
                 }
 
-                // 4. 추출된 선분(Segment)들을 이어붙여 하나의 길쭉한 Path로 만듦
+                // 선분 이어붙이기
                 let ptKey = p => p[0].toFixed(2) + ',' + p[1].toFixed(2);
                 let adj = new Map();
                 for (let s of segments) {
@@ -162,11 +188,7 @@
                         let found = false;
                         for (let n of nexts) {
                             if (!visitedSegs.has(n.seg)) {
-                                visitedSegs.add(n.seg);
-                                path.push(n.pt);
-                                currK = n.k;
-                                found = true;
-                                break;
+                                visitedSegs.add(n.seg); path.push(n.pt); currK = n.k; found = true; break;
                             }
                         }
                         if (!found) break;
@@ -178,25 +200,16 @@
                         let found = false;
                         for (let n of nexts) {
                             if (!visitedSegs.has(n.seg)) {
-                                visitedSegs.add(n.seg);
-                                path.unshift(n.pt);
-                                currK = n.k;
-                                found = true;
-                                break;
+                                visitedSegs.add(n.seg); path.unshift(n.pt); currK = n.k; found = true; break;
                             }
                         }
                         if (!found) break;
                     }
                     
-                    // Path 스무딩 (부드러운 곡선을 위해 점들을 이동평균 처리)
+                    // Path 스무딩
                     for (let iter = 0; iter < 2; iter++) {
                         let smoothed = [path[0]];
-                        for (let k = 1; k < path.length - 1; k++) {
-                            smoothed.push([
-                                path[k][0]*0.5 + path[k-1][0]*0.25 + path[k+1][0]*0.25,
-                                path[k][1]*0.5 + path[k-1][1]*0.25 + path[k+1][1]*0.25
-                            ]);
-                        }
+                        for (let k = 1; k < path.length - 1; k++) smoothed.push([path[k][0]*0.5 + path[k-1][0]*0.25 + path[k+1][0]*0.25, path[k][1]*0.5 + path[k-1][1]*0.25 + path[k+1][1]*0.25]);
                         smoothed.push(path[path.length - 1]);
                         path = smoothed;
                     }
@@ -204,15 +217,15 @@
                 }
             }
 
-            // 5. 부드럽게 이어지는 Path 위에 글자 한 자씩 눕혀서 그리기
+            // 4. 경로 위에 글자 그리기
             ctx.font = `${FONT_SIZE}px monospace`;
             ctx.textBaseline = "middle";
-            ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+            ctx.fillStyle = "rgba(255, 255, 255, 0.65)"; // 은은한 불투명도
 
-            let globalFlow = (time * 15) % 100; // 글자가 선을 타고 흐르는 속도
+            let globalFlow = (time * 18) % 100;
 
             for (let path of allPaths) {
-                if(path.length < 5) continue; // 너무 짧은 파편은 무시
+                if(path.length < 5) continue; 
 
                 let currentLen = globalFlow; 
                 let charIdx = 0;
@@ -233,7 +246,6 @@
                         ctx.save();
                         ctx.translate(cx, cy);
                         ctx.rotate(angle);
-                        // 레퍼런스처럼 선은 빼고 오직 글자만 찍습니다.
                         ctx.fillText(fullTextStream[charIdx % fullTextStream.length], 0, 0);
                         ctx.restore();
 
@@ -249,10 +261,9 @@
             requestAnimationFrame(animate);
         }
 
-        // 구동 시작
-        document.fonts.ready.then(() => {
-            init();
-        });
+        document.fonts.ready.then(() => { init(); });
     </script>
 </body>
 </html>
+
+```
