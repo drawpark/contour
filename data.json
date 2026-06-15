@@ -1,0 +1,18 @@
+{
+  "outer": [
+    "var(--color-surface-primary)", "breakpoint:1440px", "component:data-grid-view", 
+    "border-radius:12px", "state:hover", "padding:16px_24px", "gap:8px", 
+    "flex-direction:row", "z-index:100", "box-shadow:var(--shadow-sm)", 
+    "theme:dark_mode", "typography-scale:body-sm"
+  ],
+  "middle": [
+    "API_response_status:200_OK", "workflow_latency:14ms", "data_pipeline:streaming", 
+    "active_connections:2048", "auth_token:validated", "webhook_trigger:on_success", 
+    "payload_size:1.2MB", "cache_status:HIT", "query_execution_time:0.02s"
+  ],
+  "inner": [
+    "conversion_rate:+14.5%", "task_duration:-82%", "churn_rate:decreased", 
+    "user_retention:optimized", "ROI:increased_3x", "bounce_rate:-24%", 
+    "CSAT_score:4.8/5.0", "error_rate:0.01%"
+  ]
+}
