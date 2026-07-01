@@ -8,7 +8,7 @@
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; 
-            background-color: #0b0b0b; /* 살짝 더 고급스러운 다크톤 */
+            background-color: #0b0b0b; 
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
         }
         #topoCanvas {
@@ -16,26 +16,16 @@
         }
         
         .title-container {
-            position: absolute;
-            top: 50%; left: 50%;
+            position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            z-index: 10;
-            text-align: center;
-            color: #f0f0f0;
+            z-index: 10; text-align: center; color: #f0f0f0;
             pointer-events: none; 
         }
         .title-container h1 {
-            font-size: 5.5rem;
-            letter-spacing: 0.12em;
-            margin: 0 0 10px 0;
-            font-weight: 700;
+            font-size: 5.5rem; letter-spacing: 0.12em; margin: 0 0 10px 0; font-weight: 700;
         }
         .title-container p {
-            font-size: 1.1rem;
-            letter-spacing: 0.08em;
-            margin: 5px 0;
-            font-weight: 400;
-            color: #aaaaaa;
+            font-size: 1.1rem; letter-spacing: 0.08em; margin: 5px 0; color: #aaaaaa;
         }
     </style>
 </head>
@@ -51,7 +41,6 @@
     <script>
         const canvas = document.getElementById('topoCanvas');
         const ctx = canvas.getContext('2d');
-
         const GRID_RES = 16; 
         let cols, rows;
         let grid = [];
@@ -62,8 +51,10 @@
             cols = Math.ceil(canvas.width / GRID_RES) + 1;
             rows = Math.ceil(canvas.height / GRID_RES) + 1;
         }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
         
-        // 3D 심플렉스 노이즈 (유기적인 형태 생성의 핵심)
+        // 3D 심플렉스 노이즈
         function hash(x, y, z) {
             let h = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453123;
             return h - Math.floor(h);
@@ -81,57 +72,52 @@
         }
 
         let fullTextStream = "conversion_rate:+14.5% // task_duration:-82% // churn_rate:decreased // user_retention:optimized // active_connections:2048 // ";
-        
-        function init() {
-            resizeCanvas(); 
-            window.addEventListener('resize', resizeCanvas);
-            animate();      
-        }
-
         let time = 0;
-        const FONT_SIZE = 9;
+        const FONT_SIZE = 10;
         const CHAR_WIDTH = 6; 
         
         function animate() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            time += 0.005; // 지형이 꿈틀거리는 속도
-            let flowOffset = time * 80; // 텍스트가 흐르는 속도
+            time += 0.015; // 파동이 밖으로 퍼져나가는 속도
+            let flowOffset = time * 60; // 텍스트가 흐르는 속도
 
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
-            const hillRadius = Math.min(canvas.width, canvas.height) * 0.45;
+            const emptyRadius = Math.min(canvas.width, canvas.height) * 0.3; // 중앙 빈 공간 크기
 
-            // 1. 유기적인 지형 생성 (과녁판 느낌 제거)
+            // 1. 유기적 지형 생성 및 파동 결합
             for (let i = 0; i < cols; i++) {
                 grid[i] = [];
                 for (let j = 0; j < rows; j++) {
                     let px = i * GRID_RES;
                     let py = j * GRID_RES;
                     
-                    // 기본 노이즈 (산맥 같은 불규칙한 지형)
-                    let n = noise3D(i * 0.03, j * 0.03, time * 0.5) * 1.5;
+                    // 정원이 아닌 찌그러진 원을 만들기 위해 거리에 노이즈 추가
+                    let nDist = noise3D(i * 0.02, j * 0.02, 0) * 150;
+                    let dist = Math.hypot(px - centerX, py - centerY) + nDist;
                     
-                    // 정원이 아닌 찌그러진 중심 거리 계산 (유기적인 빈 공간 생성)
-                    let wobblyDist = Math.hypot(px - centerX, py - centerY) + noise3D(i * 0.05, j * 0.05, 0) * 100;
-                    
-                    // 중앙에 가파르지 않고 부드러운 가상의 언덕(Gaussian)을 배치해 선들이 자연스럽게 비켜가게 만듦
-                    let hill = Math.exp(-Math.pow(wobblyDist / hillRadius, 2)) * 4.0;
+                    // 노이즈와 확장되는 파동(Wave) 결합
+                    let n = noise3D(i * 0.03, j * 0.03, time * 0.2) * 1.5;
+                    let wave = Math.sin(dist * 0.015 - time) * 1.5; 
+                    let val = n + wave;
 
-                    grid[i][j] = n + hill;
+                    // 🌟 중앙 마스킹 (이 부분 에러를 완벽히 수정함)
+                    if (dist < emptyRadius) {
+                        val += 20; // 아예 선이 그려지지 않는 높은 값으로 밀어버림
+                    } else if (dist < emptyRadius + 120) {
+                        // 경계선이 칼같이 잘리지 않도록 부드러운 그라데이션
+                        let blend = (emptyRadius + 120 - dist) / 120;
+                        val += blend * 20;
+                    }
+
+                    grid[i][j] = val;
                 }
             }
 
-            // 2. 등고선 바깥으로 밀어내기 (Expanding 효과)
-            // 임계값(Threshold)을 시간차로 낮추면, 선들이 산 아래(바깥)로 스르륵 밀려나는 착시가 생김
-            let thresholds = [];
-            let shift = (time * 2) % 0.8; 
-            for(let t = -1.5; t <= 3.5; t += 0.8) {
-                thresholds.push(t - shift);
-            }
-
+            // 2. 등고선 추출 (Threshold 범위를 안전하게 고정)
+            let thresholds = [-2, -1, 0, 1, 2];
             let allPaths = [];
 
-            // 3. Marching Squares (등고선 추출)
             for (let t of thresholds) {
                 let segments = [];
                 for (let i = 0; i < cols - 1; i++) {
@@ -167,7 +153,6 @@
                     }
                 }
 
-                // 선분 연결 최적화
                 let ptKey = p => p[0].toFixed(1) + ',' + p[1].toFixed(1);
                 let adj = new Map();
                 for (let s of segments) {
@@ -190,4 +175,58 @@
                         let found = false;
                         for (let n of nexts) {
                             if (!visitedSegs.has(n.seg)) {
-                                visitedSegs.add(n.seg); path.
+                                visitedSegs.add(n.seg); path.push(n.pt); currK = n.k; found = true; break;
+                            }
+                        }
+                        if (!found) break;
+                    }
+                    allPaths.push(path);
+                }
+            }
+
+            // 3. 추출된 경로 위에 반투명 텍스트 흐르기
+            ctx.font = `${FONT_SIZE}px monospace`;
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "rgba(255, 255, 255, 0.4)"; // 은은한 느낌
+
+            for (let path of allPaths) {
+                if(path.length < 5) continue; 
+
+                let currentLen = (flowOffset + path[0][0] * 15) % 500; 
+                let charIdx = 0;
+                let pIdx = 0;
+
+                while(pIdx < path.length - 1) {
+                    let p1 = path[pIdx], p2 = path[pIdx+1];
+                    let dx = (p2[0] - p1[0]) * GRID_RES;
+                    let dy = (p2[1] - p1[1]) * GRID_RES;
+                    let dist = Math.hypot(dx, dy);
+
+                    if (currentLen + CHAR_WIDTH <= dist) {
+                        let t = currentLen / dist;
+                        let cx = p1[0] * GRID_RES + dx * t;
+                        let cy = p1[1] * GRID_RES + dy * t;
+                        let angle = Math.atan2(dy, dx);
+
+                        ctx.save();
+                        ctx.translate(cx, cy);
+                        ctx.rotate(angle);
+                        ctx.fillText(fullTextStream[charIdx % fullTextStream.length], 0, 0);
+                        ctx.restore();
+
+                        currentLen += CHAR_WIDTH;
+                        charIdx++;
+                    } else {
+                        currentLen -= dist;
+                        pIdx++;
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        document.fonts.ready.then(() => { animate(); });
+    </script>
+</body>
+</html>
