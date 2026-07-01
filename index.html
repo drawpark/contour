@@ -3,43 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DATA TO INSIGHT</title>
+    <title>PORTFOLIO - PRODUCT DESIGN</title>
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; 
             background-color: #080808; 
-            font-family: monospace;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
         }
         #topoCanvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
+        }
+        
+        /* 🌟 가운데 포트폴리오 제목이 들어갈 텍스트 레이어 */
+        .title-container {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            text-align: center;
+            color: #eeeeee;
+            pointer-events: none; /* 마우스 간섭 방지 */
+        }
+        .title-container h1 {
+            font-size: 5rem;
+            letter-spacing: 0.1em;
+            margin: 0 0 10px 0;
+            font-weight: 700;
+        }
+        .title-container p {
+            font-size: 1.2rem;
+            letter-spacing: 0.05em;
+            margin: 5px 0;
+            font-weight: 300;
+            color: #aaaaaa;
         }
     </style>
 </head>
 <body>
     <canvas id="topoCanvas"></canvas>
 
+    <div class="title-container">
+        <h1>PORTFOLIO</h1>
+        <p>PRODUCT DESIGN 2026</p>
+        <p>ZURICH</p>
+    </div>
+
     <script>
         const canvas = document.getElementById('topoCanvas');
         const ctx = canvas.getContext('2d');
 
-        const GRID_RES = 16; 
+        const GRID_RES = 18; // 성능을 위해 살짝 조절
         let cols, rows;
         let grid = [];
-        let allPaths = []; // 🌟 계산된 등고선 경로를 저장해둘 배열
-        const randomSeed = Math.random() * 1000; // 새로고침마다 다른 지형 생성
+        let baseNoiseGrid = []; // 매 프레임 계산량을 줄이기 위한 정적 노이즈
+        
+        // 새로고침 할 때마다 지형이 조금씩 달라지도록 시드값 부여
+        const randomSeed = Math.random() * 1000; 
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
             cols = Math.ceil(canvas.width / GRID_RES) + 1;
             rows = Math.ceil(canvas.height / GRID_RES) + 1;
-            generatePaths(); // 🌟 화면 크기가 바뀔 때만 지형을 다시 계산!
+            
+            // 화면 크기가 바뀔 때 기본 노이즈 지형을 한 번만 계산
+            for (let i = 0; i < cols; i++) {
+                baseNoiseGrid[i] = [];
+                for (let j = 0; j < rows; j++) {
+                    baseNoiseGrid[i][j] = noise3D(i * 0.04, j * 0.04, randomSeed) * 1.5;
+                }
+            }
         }
         
-        window.addEventListener('resize', resizeCanvas);
-
-        // 가볍고 강력한 3D 노이즈 함수
+        // 3D 노이즈 함수 (유지)
         function hash(x, y, z) {
             let h = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453123;
             return h - Math.floor(h);
@@ -63,43 +100,61 @@
                 const response = await fetch('data.json');
                 const data = await response.json();
                 fullTextStream = [...data.inner, ...data.middle, ...data.outer].join(" // ") + " // ";
-            } catch (e) {
-                console.log("data.json 로드 대기 중 (기본 텍스트 사용)");
-            }
-            resizeCanvas(); // 초기 세팅 및 지형 계산
-            animate();      // 애니메이션 시작
+            } catch (e) {}
+            resizeCanvas(); 
+            window.addEventListener('resize', resizeCanvas);
+            animate();      
         }
 
-        // 🌟 무거운 계산을 한 번만 수행하는 함수로 분리
-        function generatePaths() {
-            allPaths = [];
+        let time = 0;
+        const FONT_SIZE = 10;
+        const CHAR_WIDTH = 6.5; 
+        
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 🌟 이 값이 퍼져나가는 속도를 결정해!
+            time += 0.02; 
+
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
-            const hillRadius = Math.min(canvas.width, canvas.height) * 0.45; 
+            
+            // 🌟 가운데 뻥 뚫어놓을 반경 크기 (화면 크기에 비례)
+            const emptyRadius = Math.min(canvas.width, canvas.height) * 0.28; 
 
-            // 1. 노이즈 필드 그리드 생성
+            // 1. 매 프레임마다 안에서 밖으로 퍼져나가는 물결(Wave) 지형 생성
             for (let i = 0; i < cols; i++) {
                 grid[i] = [];
                 for (let j = 0; j < rows; j++) {
                     let px = i * GRID_RES;
                     let py = j * GRID_RES;
                     
-                    let baseNoise = noise3D(i * 0.04, j * 0.04, randomSeed); 
-                    let distortX = px + noise3D(i * 0.02, j * 0.02, randomSeed) * 250;
-                    let distortY = py + noise3D(i * 0.02 + 10, j * 0.02 + 10, randomSeed) * 250;
-
-                    let dist = Math.hypot(distortX - centerX, distortY - centerY);
-                    let mountainBump = Math.exp(-Math.pow(dist / hillRadius, 2)) * 1.8;
+                    // 중앙으로부터의 거리
+                    let dist = Math.hypot(px - centerX, py - centerY);
                     
-                    grid[i][j] = baseNoise + mountainBump; 
+                    // 핵심: 거리에 따라 파동이 퍼져나가는 공식 sin(거리 - 시간)
+                    let wave = Math.sin(dist * 0.015 - time) * 1.5;
+                    
+                    // 기본 노이즈 + 파동
+                    let val = baseNoiseGrid[i][j] + wave;
+
+                    // 🌟 중앙 비우기 마스크 적용
+                    // 거리가 emptyRadius보다 작으면 값을 확 올려서 등고선이 안 그려지게 만듦
+                    if (dist < emptyRadius) {
+                        val += 10; 
+                    } else if (dist < emptyRadius + 80) {
+                        // 경계선이 칼같이 잘리지 않도록 부드럽게 페이드아웃
+                        let factor = (emptyRadius + 80 - dist) / 80;
+                        val += factor * 10; 
+                    }
+
+                    grid[i][j] = val;
                 }
             }
 
-            // 2. 등고선 레벨 설정
-            let thresholds = [];
-            for(let i = 0; i < 26; i++) {
-                thresholds.push(-0.7 + (i / 25) * 1.8); 
-            }
+            // 2. 등고선 레벨 (성능 최적화를 위해 개수 조절)
+            let thresholds = [-1.5, -1.0, -0.5, 0, 0.5, 1.0, 1.5];
+            let allPaths = [];
 
             // 3. Marching Squares 알고리즘
             for (let t of thresholds) {
@@ -137,7 +192,7 @@
                     }
                 }
 
-                let ptKey = p => p[0].toFixed(2) + ',' + p[1].toFixed(2);
+                let ptKey = p => p[0].toFixed(1) + ',' + p[1].toFixed(1);
                 let adj = new Map();
                 for (let s of segments) {
                     let k1 = ptKey(s.p1), k2 = ptKey(s.p2);
@@ -164,50 +219,20 @@
                         }
                         if (!found) break;
                     }
-                    
-                    currK = ptKey(s.p1);
-                    while(true) {
-                        let nexts = adj.get(currK) || [];
-                        let found = false;
-                        for (let n of nexts) {
-                            if (!visitedSegs.has(n.seg)) {
-                                visitedSegs.add(n.seg); path.unshift(n.pt); currK = n.k; found = true; break;
-                            }
-                        }
-                        if (!found) break;
-                    }
-                    
-                    for (let iter = 0; iter < 2; iter++) {
-                        let smoothed = [path[0]];
-                        for (let k = 1; k < path.length - 1; k++) smoothed.push([path[k][0]*0.5 + path[k-1][0]*0.25 + path[k+1][0]*0.25, path[k][1]*0.5 + path[k-1][1]*0.25 + path[k+1][1]*0.25]);
-                        smoothed.push(path[path.length - 1]);
-                        path = smoothed;
-                    }
                     allPaths.push(path);
                 }
             }
-        }
 
-        let flowOffset = 0;
-        const FONT_SIZE = 10;
-        const CHAR_WIDTH = 6; 
-        const FLOW_SPEED = 0.5; // 🌟 텍스트 흐르는 속도 조절
-
-        // 🌟 가벼워진 애니메이션 루프 (텍스트만 그림)
-        function animate() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            flowOffset += FLOW_SPEED; // 텍스트를 앞으로 전진시킴
-
+            // 4. 경로 위에 글자 그리기
             ctx.font = `${FONT_SIZE}px monospace`;
             ctx.textBaseline = "middle";
-            ctx.fillStyle = "rgba(255, 255, 255, 0.55)"; 
+            ctx.fillStyle = "rgba(255, 255, 255, 0.45)"; // 글자 투명도 조절
 
             for (let path of allPaths) {
                 if(path.length < 5) continue; 
 
-                // 각 경로마다 약간씩 다른 오프셋을 주어 더 유기적으로 보이게 함
-                let currentLen = (flowOffset + path[0][0] * 10) % 1000; 
+                // 선이 퍼져나가는 방향과 일치하도록 오프셋 부여
+                let currentLen = 0; 
                 let charIdx = 0;
                 let pIdx = 0;
 
