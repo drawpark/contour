@@ -3,188 +3,252 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DATA TO INSIGHT | Product Designer</title>
+    <title>PORTFOLIO - PRODUCT DESIGN</title>
     <style>
-        /* 1. 기본 스타일 리셋 및 다크모드 배경 */
         body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background-color: #000000;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; 
+            background-color: #080808; 
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
         }
-
-        /* 2. 인터랙티브 캔버스 레이어 */
         #topoCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
         }
-
-        /* 3. 중앙 타이틀 (텍스트 레이어) */
-        .center-container {
-            position: absolute;
-            top: 50%;
-            left: 50%;
+        
+        /* 텍스트 컨테이너 */
+        .title-container {
+            position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            text-align: center;
-            z-index: 10; /* 캔버스 위로 올림 */
-            pointer-events: none; /* 마우스 이벤트가 캔버스에 전달되도록 함 */
+            z-index: 10; text-align: center; color: #f0f0f0;
+            pointer-events: none; 
         }
-
-        .title {
-            color: #ffffff;
-            font-size: 4rem;
-            font-weight: 800;
-            letter-spacing: 0.5rem;
-            margin: 0;
-            text-transform: uppercase;
-            text-shadow: 0 0 20px rgba(0,0,0,0.8);
+        .title-container h1 {
+            font-size: 5rem; letter-spacing: 0.15em; margin: 0 0 5px 0; font-weight: 700;
         }
-
-        .subtitle {
-            color: #888888;
-            font-size: 1rem;
-            letter-spacing: 0.2rem;
-            margin-top: 10px;
-            text-transform: uppercase;
+        .title-container p {
+            font-size: 1rem; letter-spacing: 0.1em; margin: 5px 0; color: #888888; font-weight: 300;
         }
     </style>
 </head>
 <body>
-
-    <div class="center-container">
-        <h1 class="title">DATA TO INSIGHT</h1>
-        <div class="subtitle">Generic Product & SaaS Designer Portfolio</div>
-    </div>
-
     <canvas id="topoCanvas"></canvas>
+
+    <div class="title-container">
+        <h1>PORTFOLIO</h1>
+        <p>PRODUCT DESIGN 2026</p>
+        <p>ZURICH</p>
+    </div>
 
     <script>
         const canvas = document.getElementById('topoCanvas');
         const ctx = canvas.getContext('2d');
-
-        // 창 크기 맞추기
+        
+        // 해상도를 높여서 선을 조밀하고 예쁘게 (숫자가 작을수록 촘촘함)
+        const GRID_RES = 14; 
+        let cols, rows;
+        let grid = [];
+        
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            cols = Math.ceil(canvas.width / GRID_RES) + 1;
+            rows = Math.ceil(canvas.height / GRID_RES) + 1;
         }
-        resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
-
-        // 마우스 좌표 객체
-        const mouse = { x: null, y: null, radius: 150 };
-        window.addEventListener('mousemove', (e) => {
-            mouse.x = e.x;
-            mouse.y = e.y;
-        });
-        window.addEventListener('mouseout', () => {
-            mouse.x = null;
-            mouse.y = null;
-        });
-
-        // 3단 범용 데이터 텍스트 정의
-        const dataLayers = {
-            outer: ["var(--color-surface)", "breakpoint:1440px", "component:data-grid", "border-radius:12px", "state:hover", "padding:16px", "gap:8px"],
-            middle: ["API_status:200_OK", "workflow_latency:14ms", "data_pipeline:active", "auth_token:valid", "cache_status:HIT"],
-            inner: ["conversion_rate:+14.5%", "task_duration:-82%", "user_retention:optimized", "ROI:increased_3x", "bounce_rate:-24%"]
-        };
-
-        // 등고선 링(Ring) 객체 배열 생성
-        const rings = [];
-        const totalRings = 15; // 등고선 총 개수
-
-        for (let i = 0; i < totalRings; i++) {
-            // 안쪽(0)에서 바깥쪽(1)까지의 비율
-            const ratio = i / totalRings; 
-            
-            // 레이어에 따른 텍스트 세트 배정
-            let textSet = dataLayers.inner;
-            let color = 'rgba(255, 255, 255, 0.8)'; // 안쪽: 비즈니스 가치 (밝게)
-            
-            if (ratio > 0.3 && ratio <= 0.7) {
-                textSet = dataLayers.middle;
-                color = 'rgba(255, 255, 255, 0.4)'; // 중간: 시스템/백엔드
-            } else if (ratio > 0.7) {
-                textSet = dataLayers.outer;
-                color = 'rgba(255, 255, 255, 0.15)'; // 바깥쪽: UI 토큰 (은은하게)
-            }
-
-            rings.push({
-                baseRadius: 100 + ratio * (Math.max(window.innerWidth, window.innerHeight) * 0.6),
-                textSet: textSet,
-                color: color,
-                seed: Math.random() * 100, // 각 링마다 흐르는 타이밍 다르게 고유값 부여
-                speed: 0.002 + (1 - ratio) * 0.003 // 안쪽이 조금 더 빠르게 흐르도록 설정
-            });
+        resizeCanvas();
+        
+        // 3D 노이즈 함수
+        function hash(x, y, z) {
+            let h = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453123;
+            return h - Math.floor(h);
+        }
+        function noise3D(x, y, z) {
+            let ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+            let fx = x - ix, fy = y - iy, fz = z - iz;
+            let ux = fx * fx * (3.0 - 2.0 * fx), uy = fy * fy * (3.0 - 2.0 * fy), uz = fz * fz * (3.0 - 2.0 * fz);
+            let n000 = hash(ix, iy, iz), n100 = hash(ix + 1, iy, iz), n010 = hash(ix, iy + 1, iz), n110 = hash(ix + 1, iy + 1, iz);
+            let n001 = hash(ix, iy, iz + 1), n101 = hash(ix + 1, iy, iz + 1), n011 = hash(ix, iy + 1, iz + 1), n111 = hash(ix + 1, iy + 1, iz + 1);
+            let nx00 = n000 * (1 - ux) + n100 * ux, nx10 = n010 * (1 - ux) + n110 * ux;
+            let nx01 = n001 * (1 - ux) + n101 * ux, nx11 = n011 * (1 - ux) + n111 * ux;
+            let nxy0 = nx00 * (1 - uy) + nx10 * uy, nxy1 = nx01 * (1 - uy) + nx11 * uy;
+            return nxy0 * (1 - uz) + nxy1 * uz;
         }
 
-        // 애니메이션 루프
+        let fullTextStream = "conversion_rate:+14.5% // task_duration:-82% // churn_rate:decreased // user_retention:optimized // active_connections:2048 // ";
         let time = 0;
+        const FONT_SIZE = 10;
+        const CHAR_WIDTH = 6; 
+        
         function animate() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            time += 0.5;
+            
+            time += 0.003; // 등고선이 아주 천천히, 고급스럽게 꿈틀거림
+            let flowOffset = time * 120; // 텍스트가 라인을 타고 흐르는 속도
 
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
 
-            rings.forEach((ring) => {
-                ctx.fillStyle = ring.color;
-                ctx.font = "11px monospace";
-
-                // 하나의 링 위에 원형으로 텍스트 배치
-                const numTexts = Math.floor(ring.baseRadius * 0.1); 
-                
-                for (let j = 0; j < numTexts; j++) {
-                    const angle = (j / numTexts) * Math.PI * 2 + (time * ring.speed);
+            // 1. 끊기지 않는 완벽한 지형 데이터 생성
+            for (let i = 0; i < cols; i++) {
+                grid[i] = [];
+                for (let j = 0; j < rows; j++) {
+                    let px = i * GRID_RES;
+                    let py = j * GRID_RES;
                     
-                    // 1. 가만히 있어도 흐르고 찌그러지는 '노이즈/웨이브' 수학 공식 (Idle 애니메이션)
-                    // 사인곡선을 여러 개 중첩해서 등고선이 합쳐지거나 흐르는 느낌 연출
-                    const waveOffset = Math.sin(angle * 4 + time * 0.01 + ring.seed) * 20 
-                                     + Math.cos(angle * 2 - time * 0.02) * 15;
+                    // 두 개의 노이즈를 섞어서 복잡하고 아름다운 산맥 느낌 생성
+                    let n1 = noise3D(px * 0.002, py * 0.002, time * 0.5) * 1.5;
+                    let n2 = noise3D(px * 0.006, py * 0.006, time * 0.8) * 0.5;
+                    let baseTopography = n1 + n2; 
+
+                    // 🌟 핵심: 중앙에 '투명한 산' 세우기
+                    let dx = px - centerX;
+                    let dy = py - centerY;
+                    let angle = Math.atan2(dy, dx);
                     
-                    let currentRadius = ring.baseRadius + waveOffset;
-
-                    // 원래 생성될 좌표 계산
-                    let x = centerX + Math.cos(angle) * currentRadius;
-                    let y = centerY + Math.sin(angle) * currentRadius;
-
-                    // 2. 마우스 호버 반응 애니메이션 (밀려나기 처리)
-                    if (mouse.x !== null && mouse.y !== null) {
-                        const dx = x - mouse.x;
-                        const dy = y - mouse.y;
-                        const distance = Math.sqrt(dx * dx + dy * dy);
-
-                        if (distance < mouse.radius) {
-                            // 마우스와 가까울수록 강하게 밀어냄
-                            const force = (mouse.radius - distance) / mouse.radius;
-                            const push = force * 40; // 밀려나는 강도
-                            
-                            x += (dx / distance) * push;
-                            y += (dy / distance) * push;
-                        }
-                    }
-
-                    // 텍스트 그리기
-                    const text = ring.textSet[j % ring.textSet.length];
+                    // 산의 형태가 정원이 아니라 찌그러지도록 노이즈로 거리(반경)를 왜곡
+                    let warp = noise3D(Math.cos(angle) * 1.5, Math.sin(angle) * 1.5, time * 0.2) * 120;
+                    let warpedDist = Math.hypot(dx, dy) + warp;
                     
-                    ctx.save();
-                    ctx.translate(x, y);
-                    ctx.rotate(angle + Math.PI / 2); // 등고선 선 방향에 맞추어 텍스트 회전
-                    ctx.fillText(text, 0, 0);
-                    ctx.restore();
+                    // Gaussian 공식을 이용해 아주 부드러운 언덕(산)을 생성
+                    // 값이 서서히 올라가기 때문에 등고선이 끊기지 않고 자연스럽게 피해서 돌아감!
+                    let virtualMountain = Math.exp(-Math.pow(warpedDist / 350, 2)) * 4.0;
+
+                    grid[i][j] = baseTopography + virtualMountain;
                 }
-            });
+            }
+
+            // 2. 화면 전체를 촘촘하게 덮는 등고선 임계값 설정
+            let thresholds = [];
+            for (let t = -2.0; t <= 1.8; t += 0.2) {
+                thresholds.push(t);
+            }
+            let allPaths = [];
+
+            // 3. Marching Squares (안정적인 추출)
+            for (let t of thresholds) {
+                let segments = [];
+                for (let i = 0; i < cols - 1; i++) {
+                    for (let j = 0; j < rows - 1; j++) {
+                        let v0 = grid[i][j], v1 = grid[i + 1][j], v2 = grid[i + 1][j + 1], v3 = grid[i][j + 1];
+                        let state = 0;
+                        if (v0 > t) state |= 1;
+                        if (v1 > t) state |= 2;
+                        if (v2 > t) state |= 4;
+                        if (v3 > t) state |= 8;
+
+                        if (state === 0 || state === 15) continue;
+
+                        let p = (vA, vB) => (Math.abs(vB - vA) < 0.0001) ? 0.5 : (t - vA) / (vB - vA);
+
+                        let top = [i + p(v0, v1), j];
+                        let right = [i + 1, j + p(v1, v2)];
+                        let bottom = [i + p(v3, v2), j + 1];
+                        let left = [i, j + p(v0, v3)];
+
+                        let pts = [];
+                        if (state === 1 || state === 14) pts.push(left, top);
+                        else if (state === 2 || state === 13) pts.push(top, right);
+                        else if (state === 4 || state === 11) pts.push(right, bottom);
+                        else if (state === 8 || state === 7) pts.push(bottom, left);
+                        else if (state === 3 || state === 12) pts.push(left, right);
+                        else if (state === 6 || state === 9) pts.push(top, bottom);
+                        else if (state === 5) pts.push(left, top, right, bottom);
+                        else if (state === 10) pts.push(top, right, bottom, left);
+
+                        if (pts.length === 2) segments.push({p1: pts[0], p2: pts[1]});
+                        if (pts.length === 4) { segments.push({p1: pts[0], p2: pts[1]}); segments.push({p1: pts[2], p2: pts[3]}); }
+                    }
+                }
+
+                // 선분 연결
+                let ptKey = p => p[0].toFixed(2) + ',' + p[1].toFixed(2);
+                let adj = new Map();
+                for (let s of segments) {
+                    let k1 = ptKey(s.p1), k2 = ptKey(s.p2);
+                    if (!adj.has(k1)) adj.set(k1, []);
+                    if (!adj.has(k2)) adj.set(k2, []);
+                    adj.get(k1).push({k: k2, pt: s.p2, seg: s});
+                    adj.get(k2).push({k: k1, pt: s.p1, seg: s});
+                }
+
+                let visitedSegs = new Set();
+                for (let s of segments) {
+                    if (visitedSegs.has(s)) continue;
+                    let path = [s.p1, s.p2];
+                    visitedSegs.add(s);
+                    
+                    let currK = ptKey(s.p2);
+                    while(true) {
+                        let nexts = adj.get(currK) || [];
+                        let found = false;
+                        for (let n of nexts) {
+                            if (!visitedSegs.has(n.seg)) {
+                                visitedSegs.add(n.seg); path.push(n.pt); currK = n.k; found = true; break;
+                            }
+                        }
+                        if (!found) break;
+                    }
+                    
+                    // 끊김을 방지하는 스무딩(Smoothing) 처리
+                    for(let iter=0; iter<1; iter++) {
+                        let smoothed = [path[0]];
+                        for(let k=1; k<path.length-1; k++) {
+                            smoothed.push([
+                                path[k-1][0]*0.25 + path[k][0]*0.5 + path[k+1][0]*0.25,
+                                path[k-1][1]*0.25 + path[k][1]*0.5 + path[k+1][1]*0.25
+                            ]);
+                        }
+                        smoothed.push(path[path.length-1]);
+                        path = smoothed;
+                    }
+                    allPaths.push(path);
+                }
+            }
+
+            // 4. 추출된 경로 위에 고급스럽게 텍스트 흐르기
+            ctx.font = `${FONT_SIZE}px monospace`;
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "rgba(255, 255, 255, 0.4)"; // 은은한 반투명
+
+            for (let path of allPaths) {
+                if(path.length < 5) continue; 
+
+                // 각 라인마다 흐르는 오프셋을 다르게 해서 데이터가 제각각 움직이게
+                let currentLen = (flowOffset + path[0][0] * 20) % 800; 
+                let charIdx = 0;
+                let pIdx = 0;
+
+                while(pIdx < path.length - 1) {
+                    let p1 = path[pIdx], p2 = path[pIdx+1];
+                    let dx = (p2[0] - p1[0]) * GRID_RES;
+                    let dy = (p2[1] - p1[1]) * GRID_RES;
+                    let dist = Math.hypot(dx, dy);
+
+                    if (currentLen + CHAR_WIDTH <= dist) {
+                        let t = currentLen / dist;
+                        let cx = p1[0] * GRID_RES + dx * t;
+                        let cy = p1[1] * GRID_RES + dy * t;
+                        let angle = Math.atan2(dy, dx);
+
+                        ctx.save();
+                        ctx.translate(cx, cy);
+                        ctx.rotate(angle);
+                        ctx.fillText(fullTextStream[charIdx % fullTextStream.length], 0, 0);
+                        ctx.restore();
+
+                        currentLen += CHAR_WIDTH;
+                        charIdx++;
+                    } else {
+                        currentLen -= dist;
+                        pIdx++;
+                    }
+                }
+            }
 
             requestAnimationFrame(animate);
         }
 
-        animate();
+        document.fonts.ready.then(() => { animate(); });
     </script>
 </body>
 </html>
