@@ -8,30 +8,28 @@
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; 
-            background-color: #060606; /* 깊이감 있는 딥블랙 */
+            background-color: #060606; 
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
         }
-        #topoCanvas {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
+        canvas {
+            display: block; width: 100vw; height: 100vh;
         }
-        
-        /* 메인 하이엔드 타이틀 레이어 */
         .title-container {
             position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
             z-index: 10; text-align: center; color: #ffffff;
-            pointer-events: none; 
+            pointer-events: none; /* 마우스 이벤트가 뒤쪽 캔버스로 통과하도록 설정 */
         }
         .title-container h1 {
-            font-size: 5.5rem; letter-spacing: 0.16em; margin: 0 0 12px 0; font-weight: 700;
+            font-size: 6rem; letter-spacing: 0.18em; margin: 0 0 10px 0; font-weight: 700;
         }
         .title-container p {
-            font-size: 1.05rem; letter-spacing: 0.12em; margin: 6px 0; color: #777777; font-weight: 300;
+            font-size: 1.1rem; letter-spacing: 0.15em; margin: 5px 0; color: #888888; font-weight: 300;
         }
     </style>
 </head>
 <body>
-    <canvas id="topoCanvas"></canvas>
+    <canvas id="glcanvas"></canvas>
 
     <div class="title-container">
         <h1>PORTFOLIO</h1>
@@ -39,234 +37,204 @@
         <p>ZURICH</p>
     </div>
 
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        attribute vec2 a_position;
+        void main() {
+            gl_Position = vec4(a_position, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fragment-shader" type="x-shader/x-fragment">
+        precision highp float;
+        
+        uniform vec2 u_resolution;
+        uniform float u_time;
+        uniform vec2 u_mouse;
+        uniform sampler2D u_texture;
+
+        // 3D Simplex Noise (GPU 최적화 알고리즘)
+        vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
+        float snoise(vec2 v){
+            const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+            vec2 i  = floor(v + dot(v, C.yy) );
+            vec2 x0 = v -   i + dot(i, C.xx);
+            vec2 i1;
+            i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+            vec4 x12 = x0.xyxy + C.xxzz;
+            x12.xy -= i1;
+            i = mod(i, 289.0);
+            vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+            vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+            m = m*m ; m = m*m ;
+            vec3 x = 2.0 * fract(p * C.www) - 1.0;
+            vec3 h = abs(x) - 0.5;
+            vec3 ox = floor(x + 0.5);
+            vec3 a0 = x - ox;
+            m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+            vec3 g;
+            g.x  = a0.x  * x0.x  + h.x  * x0.y;
+            g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+            return 130.0 * dot(m, g);
+        }
+
+        void main() {
+            vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+            vec2 centered = uv - 0.5;
+            centered.x *= u_resolution.x / u_resolution.y; // 화면 비율 보정
+
+            // 🌟 1. 마우스 호버 인터랙션 (공간 왜곡)
+            vec2 mouseUV = u_mouse / u_resolution.xy - 0.5;
+            mouseUV.x *= u_resolution.x / u_resolution.y;
+            
+            float distToMouse = length(centered - mouseUV);
+            // 마우스 근처에 가면 공간이 바깥으로 밀려남 (Scattering 효과)
+            vec2 repelDir = normalize(centered - mouseUV + 0.0001); // 0 나누기 방지
+            float repelStrength = smoothstep(0.3, 0.0, distToMouse) * 0.06;
+            
+            vec2 warpedUV = centered + repelDir * repelStrength;
+
+            // 🌟 2. 등고선 파동 유기적 변형 (Noise)
+            float n1 = snoise(warpedUV * 2.5 + u_time * 0.08) * 0.12;
+            float n2 = snoise(warpedUV * 5.0 - u_time * 0.04) * 0.04;
+            warpedUV += vec2(n1, n2); // 완벽한 원이 아니라 등고선처럼 구불거리게 만듦
+
+            float r = length(warpedUV);
+            float theta = atan(warpedUV.y, warpedUV.x);
+
+            // 🌟 3. 중앙 글자 영역 부드럽게 비우기 (Organic Mask)
+            float voidRadius = 0.22;
+            float mask = smoothstep(voidRadius - 0.02, voidRadius + 0.06, r);
+
+            // 🌟 4. 텍스처 맵핑 (글자를 선을 따라 흐르게 함)
+            float rings = 35.0; // 등고선 밀도 조절
+            float rOffset = r * rings - u_time * 1.5; // 가운데서 밖으로 퍼져나가는 애니메이션
+
+            // 반지름에 따라 글자 길이가 늘어나는 것을 보정하여 일정한 비율 유지
+            float circumference = r * 6.28318;
+            float textU = (theta / 6.28318) * (circumference * 14.0) + u_time * 0.2; 
+            float textV = rOffset;
+
+            vec4 texColor = texture2D(u_texture, vec2(textU, textV));
+
+            // 선과 선 사이 간격(Gap) 만들기
+            float lineAlpha = smoothstep(0.1, 0.6, sin(fract(rOffset) * 3.14159));
+            lineAlpha = pow(lineAlpha, 2.0); // 선명도를 위해 대비 증가
+
+            // 최종 색상 계산 (텍스처의 흰 글자 * 투명도)
+            vec3 color = texColor.rgb;
+            float finalAlpha = texColor.a * mask * lineAlpha * 0.55; // 0.55: 고급스러운 반투명도
+
+            gl_FragColor = vec4(color, finalAlpha);
+        }
+    </script>
+
     <script>
-        const canvas = document.getElementById('topoCanvas');
-        const ctx = canvas.getContext('2d');
-        
-        // 레퍼런스처럼 아주 조밀하고 밀도 높은 선을 만들기 위해 해상도 촘촘히 세팅
-        const GRID_RES = 10; 
-        let cols, rows;
-        let grid = [];
-        
-        function resizeCanvas() {
+        const canvas = document.getElementById('glcanvas');
+        const gl = canvas.getContext('webgl');
+
+        // 리사이즈 처리
+        function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            cols = Math.ceil(canvas.width / GRID_RES) + 1;
-            rows = Math.ceil(canvas.height / GRID_RES) + 1;
+            gl.viewport(0, 0, canvas.width, canvas.height);
         }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 셰이더 컴파일 함수
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShaderSource = document.getElementById('vertex-shader').text;
+        const fragmentShaderSource = document.getElementById('fragment-shader').text;
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        // 화면 꽉 채우는 사각형(Quad) 생성
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1.0, -1.0,  1.0, -1.0,  -1.0,  1.0,
+            -1.0,  1.0,  1.0, -1.0,   1.0,  1.0
+        ]), gl.STATIC_DRAW);
+
+        const positionLocation = gl.getAttribLocation(program, "a_position");
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+        // 🌟 고해상도 텍스트 텍스처 동적 생성 (여기서 텍스트 디자인 결정)
+        const textCanvas = document.createElement('canvas');
+        textCanvas.width = 4096; // 아주 긴 캔버스로 글자 뭉개짐 방지
+        textCanvas.height = 64;  
+        const tCtx = textCanvas.getContext('2d');
         
-        // 고품질 지형용 3D 노이즈 함수
-        function hash(x, y, z) {
-            let h = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453123;
-            return h - Math.floor(h);
-        }
-        function noise3D(x, y, z) {
-            let ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
-            let fx = x - ix, fy = y - iy, fz = z - iz;
-            let ux = fx * fx * (3.0 - 2.0 * fx), uy = fy * fy * (3.0 - 2.0 * fy), uz = fz * fz * (3.0 - 2.0 * fz);
-            let n000 = hash(ix, iy, iz), n100 = hash(ix + 1, iy, iz), n010 = hash(ix, iy + 1, iz), n110 = hash(ix + 1, iy + 1, iz);
-            let n001 = hash(ix, iy, iz + 1), n101 = hash(ix + 1, iy, iz + 1), n011 = hash(ix, iy + 1, iz + 1), n111 = hash(ix + 1, iy + 1, iz + 1);
-            let nx00 = n000 * (1 - ux) + n100 * ux, nx10 = n010 * (1 - ux) + n110 * ux;
-            let nx01 = n001 * (1 - ux) + n101 * ux, nx11 = n011 * (1 - ux) + n111 * ux;
-            let nxy0 = nx00 * (1 - uy) + nx10 * uy, nxy1 = nx01 * (1 - uy) + nx11 * uy;
-            return nxy0 * (1 - uz) + nxy1 * uz;
-        }
-
-        // 다중 옥타브 노이즈 (진짜 정밀한 지도 등고선 느낌을 내는 핵심 치트키)
-        function fbm(x, y, z) {
-            let value = 0;
-            let amplitude = 1.0;
-            let frequency = 0.003;
-            for (let i = 0; i < 3; i++) {
-                value += amplitude * noise3D(x * frequency, y * frequency, z);
-                amplitude *= 0.5;
-                frequency *= 2.3;
-            }
-            return value;
-        }
-
-        let fullTextStream = "conversion_rate:+14.5% // task_duration:-82% // churn_rate:decreased // user_retention:optimized // active_connections:2048 // ";
-        let time = 0;
-        const FONT_SIZE = 9;
-        const CHAR_WIDTH = 5.2; 
+        tCtx.fillStyle = "rgba(0,0,0,0)";
+        tCtx.fillRect(0, 0, textCanvas.width, textCanvas.height);
+        tCtx.font = "bold 34px monospace";
+        tCtx.fillStyle = "#ffffff";
+        tCtx.textBaseline = "middle";
         
-        function animate() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            time += 0.0025; // 하이엔드 무드에 걸맞게 아주 부드럽고 느린 흐름
-            let flowOffset = time * 130; 
+        let streamText = "conversion_rate:+14.5% // task_duration:-82% // churn_rate:decreased // user_retention:optimized // active_connections:2048 // ";
+        let fullText = streamText;
+        while(tCtx.measureText(fullText).width < textCanvas.width) { fullText += streamText; }
+        tCtx.fillText(fullText, 0, 32);
 
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const clearRadius = Math.min(canvas.width, canvas.height) * 0.28; // 타이틀 보호 반경
+        // 텍스처를 GPU로 업로드
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textCanvas);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
-            // 1. 공간 왜곡 공식을 이용한 완벽한 고도 그리드 생성
-            for (let i = 0; i < cols; i++) {
-                grid[i] = [];
-                for (let j = 0; j < rows; j++) {
-                    let px = i * GRID_RES;
-                    let py = j * GRID_RES;
-                    
-                    let dx = px - centerX;
-                    let dy = py - centerY;
-                    let dist = Math.hypot(dx, dy);
-                    
-                    // 🌟 핵심: 중앙부 좌표를 스무스하게 외곽으로 밀어냄 (선 뭉침/끊김 근본적 해결)
-                    let warp = Math.exp(-Math.pow(dist / clearRadius, 2));
-                    let sx = centerX + dx * (1 - warp * 0.75);
-                    let sy = centerY + dy * (1 - warp * 0.75);
+        // 유니폼(변수) 연결
+        const uResolution = gl.getUniformLocation(program, "u_resolution");
+        const uTime = gl.getUniformLocation(program, "u_time");
+        const uMouse = gl.getUniformLocation(program, "u_mouse");
 
-                    // 왜곡된 공간 위에 고밀도 지형 계산
-                    grid[i][j] = fbm(sx, sy, time * 0.2) * 2.5;
-                }
-            }
+        // 마우스 부드러운 호버 처리용 변수
+        let mouseX = -1000, mouseY = -1000; 
+        let targetMouseX = -1000, targetMouseY = -1000;
+        window.addEventListener('mousemove', (e) => {
+            targetMouseX = e.clientX;
+            targetMouseY = canvas.height - e.clientY; // WebGL은 Y축이 반대
+        });
+        window.addEventListener('mouseout', () => { targetMouseX = -1000; targetMouseY = -1000; });
 
-            // 2. 화면 전체에 균일하게 깔릴 등고선 레이어 생성
-            let thresholds = [];
-            for (let t = -2.2; t <= 2.2; t += 0.18) {
-                thresholds.push(t);
-            }
-            let allPaths = [];
+        // 애니메이션 루프
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-            // 3. Marching Squares 알고리즘으로 연속적인 등고선 추출
-            for (let t of thresholds) {
-                let segments = [];
-                for (let i = 0; i < cols - 1; i++) {
-                    for (let j = 0; j < rows - 1; j++) {
-                        let v0 = grid[i][j], v1 = grid[i + 1][j], v2 = grid[i + 1][j + 1], v3 = grid[i][j + 1];
-                        let state = 0;
-                        if (v0 > t) state |= 1;
-                        if (v1 > t) state |= 2;
-                        if (v2 > t) state |= 4;
-                        if (v3 > t) state |= 8;
+        function render(time) {
+            // 마우스 위치를 부드럽게 따라가게(Lerp) 처리
+            mouseX += (targetMouseX - mouseX) * 0.08;
+            mouseY += (targetMouseY - mouseY) * 0.08;
 
-                        if (state === 0 || state === 15) continue;
+            gl.uniform2f(uResolution, canvas.width, canvas.height);
+            gl.uniform1f(uTime, time * 0.001); // 시간을 초 단위로 변환
+            gl.uniform2f(uMouse, mouseX, mouseY);
 
-                        let p = (vA, vB) => (Math.abs(vB - vA) < 0.0001) ? 0.5 : (t - vA) / (vB - vA);
-
-                        let top = [i + p(v0, v1), j];
-                        let right = [i + 1, j + p(v1, v2)];
-                        let bottom = [i + p(v3, v2), j + 1];
-                        let left = [i, j + p(v0, v3)];
-
-                        let pts = [];
-                        if (state === 1 || state === 14) pts.push(left, top);
-                        else if (state === 2 || state === 13) pts.push(top, right);
-                        else if (state === 4 || state === 11) pts.push(right, bottom);
-                        else if (state === 8 || state === 7) pts.push(bottom, left);
-                        else if (state === 3 || state === 12) pts.push(left, right);
-                        else if (state === 6 || state === 9) pts.push(top, bottom);
-                        else if (state === 5) pts.push(left, top, right, bottom);
-                        else if (state === 10) pts.push(top, right, bottom, left);
-
-                        if (pts.length === 2) segments.push({p1: pts[0], p2: pts[1]});
-                        if (pts.length === 4) { segments.push({p1: pts[0], p2: pts[1]}); segments.push({p1: pts[2], p2: pts[3]}); }
-                    }
-                }
-
-                // 세그먼트들을 하나의 긴 선(Path)으로 정밀 조립
-                let ptKey = p => p[0].toFixed(2) + ',' + p[1].toFixed(2);
-                let adj = new Map();
-                for (let s of segments) {
-                    let k1 = ptKey(s.p1), k2 = ptKey(s.p2);
-                    if (!adj.has(k1)) adj.set(k1, []);
-                    if (!adj.has(k2)) adj.set(k2, []);
-                    adj.get(k1).push({k: k2, pt: s.p2, seg: s});
-                    adj.get(k2).push({k: k1, pt: s.p1, seg: s});
-                }
-
-                let visitedSegs = new Set();
-                for (let s of segments) {
-                    if (visitedSegs.has(s)) continue;
-                    let path = [s.p1, s.p2];
-                    visitedSegs.add(s);
-                    
-                    let currK = ptKey(s.p2);
-                    while(true) {
-                        let nexts = adj.get(currK) || [];
-                        let found = false;
-                        for (let n of nexts) {
-                            if (!visitedSegs.has(n.seg)) {
-                                visitedSegs.add(n.seg); path.push(n.pt); currK = n.k; found = true; break;
-                            }
-                        }
-                        if (!found) break;
-                    }
-                    
-                    // 지그재그 꺾임 방지 부드러운 스무딩 필터 적용
-                    let smoothed = [path[0]];
-                    for(let k = 1; k < path.length - 1; k++) {
-                        smoothed.push([
-                            path[k-1][0]*0.25 + path[k][0]*0.5 + path[k+1][0]*0.25,
-                            path[k-1][1]*0.25 + path[k][1]*0.5 + path[k+1][1]*0.25
-                        ]);
-                    }
-                    smoothed.push(path[path.length-1]);
-                    allPaths.push(smoothed);
-                }
-            }
-
-            // 4. 조립된 등고선 경로 위에 프리미엄 반투명 텍스트 스트림 렌더링
-            ctx.font = `${FONT_SIZE}px monospace`;
-            ctx.textBaseline = "middle";
-
-            for (let path of allPaths) {
-                if(path.length < 4) continue; 
-
-                let currentLen = (flowOffset + path[0][0] * 25) % 700; 
-                let charIdx = 0;
-                let pIdx = 0;
-
-                while(pIdx < path.length - 1) {
-                    let p1 = path[pIdx], p2 = path[pIdx+1];
-                    let dx = (p2[0] - p1[0]) * GRID_RES;
-                    let dy = (p2[1] - p1[1]) * GRID_RES;
-                    let dist = Math.hypot(dx, dy);
-
-                    if (currentLen + CHAR_WIDTH <= dist) {
-                        let t = currentLen / dist;
-                        let cx = p1[0] * GRID_RES + dx * t;
-                        let cy = p1[1] * GRID_RES + dy * t;
-                        
-                        // 🌟 안전 마스크: 중앙 타이틀 주변 글자들은 눈에 거슬리지 않게 투명도를 스무스하게 조절
-                        let textDist = Math.hypot(cx - centerX, cy - centerY);
-                        let alpha = 0.24; // 기본 선들의 은은한 투명도
-                        
-                        if (textDist < clearRadius) {
-                            if (textDist < clearRadius * 0.72) {
-                                alpha = 0; // 글자 바로 주변은 완벽하게 청정 구역화
-                            } else {
-                                // 경계면 투명도 스무스 보간
-                                let fade = (textDist - clearRadius * 0.72) / (clearRadius * 0.28);
-                                alpha *= fade * fade;
-                            }
-                        }
-
-                        if (alpha > 0) {
-                            let angle = Math.atan2(dy, dx);
-                            ctx.save();
-                            ctx.translate(cx, cy);
-                            ctx.rotate(angle);
-                            ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-                            ctx.fillText(fullTextStream[charIdx % fullTextStream.length], 0, 0);
-                            ctx.restore();
-                        }
-
-                        currentLen += CHAR_WIDTH;
-                        charIdx++;
-                    } else {
-                        currentLen -= dist;
-                        pIdx++;
-                    }
-                }
-            }
-
-            requestAnimationFrame(animate);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+            requestAnimationFrame(render);
         }
-
-        document.fonts.ready.then(() => { animate(); });
+        
+        requestAnimationFrame(render);
     </script>
 </body>
 </html>
