@@ -8,25 +8,23 @@
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; 
-            background-color: #080808; 
+            background-color: #0a0a0a; 
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
         }
         #topoCanvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
         }
-        
-        /* 텍스트 컨테이너 */
         .title-container {
             position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            z-index: 10; text-align: center; color: #f0f0f0;
+            z-index: 10; text-align: center; color: #ffffff;
             pointer-events: none; 
         }
         .title-container h1 {
-            font-size: 5rem; letter-spacing: 0.15em; margin: 0 0 5px 0; font-weight: 700;
+            font-size: 5.5rem; letter-spacing: 0.15em; margin: 0 0 10px 0; font-weight: 700;
         }
         .title-container p {
-            font-size: 1rem; letter-spacing: 0.1em; margin: 5px 0; color: #888888; font-weight: 300;
+            font-size: 1.1rem; letter-spacing: 0.1em; margin: 5px 0; color: #888888; font-weight: 300;
         }
     </style>
 </head>
@@ -43,8 +41,8 @@
         const canvas = document.getElementById('topoCanvas');
         const ctx = canvas.getContext('2d');
         
-        // 해상도를 높여서 선을 조밀하고 예쁘게 (숫자가 작을수록 촘촘함)
-        const GRID_RES = 14; 
+        // 해상도를 12로 낮춰서 선을 아주 조밀하고 꽉 차게 만듦
+        const GRID_RES = 12; 
         let cols, rows;
         let grid = [];
         
@@ -57,7 +55,7 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
         
-        // 3D 노이즈 함수
+        // 3D 심플렉스 노이즈
         function hash(x, y, z) {
             let h = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453123;
             return h - Math.floor(h);
@@ -76,55 +74,53 @@
 
         let fullTextStream = "conversion_rate:+14.5% // task_duration:-82% // churn_rate:decreased // user_retention:optimized // active_connections:2048 // ";
         let time = 0;
-        const FONT_SIZE = 10;
-        const CHAR_WIDTH = 6; 
+        const FONT_SIZE = 9;
+        const CHAR_WIDTH = 5.5; 
         
         function animate() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            time += 0.003; // 등고선이 아주 천천히, 고급스럽게 꿈틀거림
-            let flowOffset = time * 120; // 텍스트가 라인을 타고 흐르는 속도
+            time += 0.002; // 꿈틀거리는 속도 (부드럽게)
+            let flowOffset = time * 150; // 글자 흐르는 속도
 
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
 
-            // 1. 끊기지 않는 완벽한 지형 데이터 생성
+            // 1. 꽉 차는 유기적 지형 생성
             for (let i = 0; i < cols; i++) {
                 grid[i] = [];
                 for (let j = 0; j < rows; j++) {
                     let px = i * GRID_RES;
                     let py = j * GRID_RES;
                     
-                    // 두 개의 노이즈를 섞어서 복잡하고 아름다운 산맥 느낌 생성
-                    let n1 = noise3D(px * 0.002, py * 0.002, time * 0.5) * 1.5;
-                    let n2 = noise3D(px * 0.006, py * 0.006, time * 0.8) * 0.5;
-                    let baseTopography = n1 + n2; 
+                    // 넓게 퍼지는 기본 지형
+                    let baseTopography = noise3D(px * 0.002, py * 0.002, time) * 2.5;
 
-                    // 🌟 핵심: 중앙에 '투명한 산' 세우기
+                    // 🌟 중앙의 빈 공간(가상의 산) 만들기
                     let dx = px - centerX;
                     let dy = py - centerY;
+                    let dist = Math.hypot(dx, dy);
+                    
+                    // 거리를 노이즈로 찌그러뜨려서 원형이 아닌 불규칙한 모양으로 만듦
                     let angle = Math.atan2(dy, dx);
+                    let warp = noise3D(Math.cos(angle) * 1.5, Math.sin(angle) * 1.5, 0) * 100;
+                    let warpedDist = dist + warp;
                     
-                    // 산의 형태가 정원이 아니라 찌그러지도록 노이즈로 거리(반경)를 왜곡
-                    let warp = noise3D(Math.cos(angle) * 1.5, Math.sin(angle) * 1.5, time * 0.2) * 120;
-                    let warpedDist = Math.hypot(dx, dy) + warp;
-                    
-                    // Gaussian 공식을 이용해 아주 부드러운 언덕(산)을 생성
-                    // 값이 서서히 올라가기 때문에 등고선이 끊기지 않고 자연스럽게 피해서 돌아감!
-                    let virtualMountain = Math.exp(-Math.pow(warpedDist / 350, 2)) * 4.0;
+                    // 중앙 반경 약 250px 안쪽으로 갈수록 값이 치솟는 가파른 언덕 생성
+                    // Threshold 범위를 넘어가게 만들어서 자연스럽게 선이 안 그려지게 유도함
+                    let mountain = Math.exp(-Math.pow(warpedDist / 250, 4)) * 10.0;
 
-                    grid[i][j] = baseTopography + virtualMountain;
+                    grid[i][j] = baseTopography + mountain;
                 }
             }
 
-            // 2. 화면 전체를 촘촘하게 덮는 등고선 임계값 설정
+            // 2. 엄청나게 촘촘한 등고선 레벨 생성 (화면 가득 채우기)
             let thresholds = [];
-            for (let t = -2.0; t <= 1.8; t += 0.2) {
+            for (let t = -3.0; t <= 3.0; t += 0.15) {
                 thresholds.push(t);
             }
             let allPaths = [];
 
-            // 3. Marching Squares (안정적인 추출)
+            // 3. Marching Squares 알고리즘
             for (let t of thresholds) {
                 let segments = [];
                 for (let i = 0; i < cols - 1; i++) {
@@ -160,7 +156,6 @@
                     }
                 }
 
-                // 선분 연결
                 let ptKey = p => p[0].toFixed(2) + ',' + p[1].toFixed(2);
                 let adj = new Map();
                 for (let s of segments) {
@@ -189,7 +184,7 @@
                         if (!found) break;
                     }
                     
-                    // 끊김을 방지하는 스무딩(Smoothing) 처리
+                    // 선 꺾임 방지 스무딩
                     for(let iter=0; iter<1; iter++) {
                         let smoothed = [path[0]];
                         for(let k=1; k<path.length-1; k++) {
@@ -205,16 +200,15 @@
                 }
             }
 
-            // 4. 추출된 경로 위에 고급스럽게 텍스트 흐르기
+            // 4. 추출된 경로 위에 텍스트 흐르기
             ctx.font = `${FONT_SIZE}px monospace`;
             ctx.textBaseline = "middle";
-            ctx.fillStyle = "rgba(255, 255, 255, 0.4)"; // 은은한 반투명
+            ctx.fillStyle = "rgba(255, 255, 255, 0.4)"; 
 
             for (let path of allPaths) {
                 if(path.length < 5) continue; 
 
-                // 각 라인마다 흐르는 오프셋을 다르게 해서 데이터가 제각각 움직이게
-                let currentLen = (flowOffset + path[0][0] * 20) % 800; 
+                let currentLen = (flowOffset + path[0][0] * 30) % 900; 
                 let charIdx = 0;
                 let pIdx = 0;
 
