@@ -8,7 +8,7 @@
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             overflow: hidden; 
-            background-color: #0b0b0b; 
+            background-color: #0d0d0d; 
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
         }
         #topoCanvas {
@@ -18,14 +18,14 @@
         .title-container {
             position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            z-index: 10; text-align: center; color: #f0f0f0;
+            z-index: 10; text-align: center; color: #f5f5f5;
             pointer-events: none; 
         }
         .title-container h1 {
-            font-size: 5.5rem; letter-spacing: 0.12em; margin: 0 0 10px 0; font-weight: 700;
+            font-size: 5.5rem; letter-spacing: 0.15em; margin: 0 0 10px 0; font-weight: 700;
         }
         .title-container p {
-            font-size: 1.1rem; letter-spacing: 0.08em; margin: 5px 0; color: #aaaaaa;
+            font-size: 1.1rem; letter-spacing: 0.1em; margin: 5px 0; color: #888888; font-weight: 300;
         }
     </style>
 </head>
@@ -41,7 +41,9 @@
     <script>
         const canvas = document.getElementById('topoCanvas');
         const ctx = canvas.getContext('2d');
-        const GRID_RES = 16; 
+        
+        // 레퍼런스처럼 선을 조밀하게 만들기 위해 해상도 최적화
+        const GRID_RES = 12; 
         let cols, rows;
         let grid = [];
         
@@ -54,7 +56,7 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
         
-        // 3D 심플렉스 노이즈
+        // 3D 노이즈
         function hash(x, y, z) {
             let h = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453123;
             return h - Math.floor(h);
@@ -73,49 +75,59 @@
 
         let fullTextStream = "conversion_rate:+14.5% // task_duration:-82% // churn_rate:decreased // user_retention:optimized // active_connections:2048 // ";
         let time = 0;
-        const FONT_SIZE = 10;
-        const CHAR_WIDTH = 6; 
+        const FONT_SIZE = 9;
+        const CHAR_WIDTH = 5.5; 
         
         function animate() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            time += 0.015; // 파동이 밖으로 퍼져나가는 속도
-            let flowOffset = time * 60; // 텍스트가 흐르는 속도
+            time += 0.003; // 지형이 변하는 속도 (느리고 고급스럽게)
+            let flowOffset = time * 100; // 텍스트가 흐르는 속도
 
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
-            const emptyRadius = Math.min(canvas.width, canvas.height) * 0.3; // 중앙 빈 공간 크기
 
-            // 1. 유기적 지형 생성 및 파동 결합
+            // 1. 진짜 유기적 지형 생성 (과녁판 제거)
             for (let i = 0; i < cols; i++) {
                 grid[i] = [];
                 for (let j = 0; j < rows; j++) {
                     let px = i * GRID_RES;
                     let py = j * GRID_RES;
                     
-                    // 정원이 아닌 찌그러진 원을 만들기 위해 거리에 노이즈 추가
-                    let nDist = noise3D(i * 0.02, j * 0.02, 0) * 150;
-                    let dist = Math.hypot(px - centerX, py - centerY) + nDist;
-                    
-                    // 노이즈와 확장되는 파동(Wave) 결합
-                    let n = noise3D(i * 0.03, j * 0.03, time * 0.2) * 1.5;
-                    let wave = Math.sin(dist * 0.015 - time) * 1.5; 
-                    let val = n + wave;
+                    // FBM(Fractal Brownian Motion) 기법: 큰 지형과 디테일한 지형을 섞음
+                    let n1 = noise3D(px * 0.003, py * 0.003, time) * 1.2;
+                    let n2 = noise3D(px * 0.008, py * 0.008, time * 1.5) * 0.5;
+                    let baseTopography = n1 + n2; 
 
-                    // 🌟 중앙 마스킹 (이 부분 에러를 완벽히 수정함)
-                    if (dist < emptyRadius) {
-                        val += 20; // 아예 선이 그려지지 않는 높은 값으로 밀어버림
-                    } else if (dist < emptyRadius + 120) {
-                        // 경계선이 칼같이 잘리지 않도록 부드러운 그라데이션
-                        let blend = (emptyRadius + 120 - dist) / 120;
-                        val += blend * 20;
+                    // 🌟 2. 찌그러지고 불규칙한 중앙 구멍 뚫기
+                    let dx = px - centerX;
+                    let dy = py - centerY;
+                    let dist = Math.hypot(dx, dy);
+                    let angle = Math.atan2(dy, dx);
+                    
+                    // 구멍의 반지름이 각도와 노이즈에 따라 제멋대로 일그러짐 (이게 핵심!)
+                    let irregularRadius = 250 + noise3D(Math.cos(angle)*1.5, Math.sin(angle)*1.5, 0) * 100;
+
+                    let val = baseTopography;
+                    
+                    if (dist < irregularRadius) {
+                        val += 15; // 등고선이 들어오지 못하게 값을 밀어버림
+                    } else if (dist < irregularRadius + 180) {
+                        // 경계선이 칼로 자른 듯하지 않게 부드럽게 자연스런 언덕 생성
+                        let blend = (dist - irregularRadius) / 180;
+                        // Smoothstep 보간으로 훨씬 유기적인 그라데이션
+                        blend = blend * blend * (3 - 2 * blend); 
+                        val += (1 - blend) * 15;
                     }
 
                     grid[i][j] = val;
                 }
             }
 
-            // 2. 등고선 추출 (Threshold 범위를 안전하게 고정)
-            let thresholds = [-2, -1, 0, 1, 2];
+            // 3. 레퍼런스처럼 조밀하고 많은 등고선 추출
+            let thresholds = [];
+            for (let t = -1.5; t <= 1.5; t += 0.15) {
+                thresholds.push(t);
+            }
             let allPaths = [];
 
             for (let t of thresholds) {
@@ -180,19 +192,32 @@
                         }
                         if (!found) break;
                     }
+                    
+                    // 선을 조금 더 매끄럽게 다듬기 (Smoothing)
+                    for(let iter=0; iter<1; iter++) {
+                        let smoothed = [path[0]];
+                        for(let k=1; k<path.length-1; k++) {
+                            smoothed.push([
+                                path[k-1][0]*0.25 + path[k][0]*0.5 + path[k+1][0]*0.25,
+                                path[k-1][1]*0.25 + path[k][1]*0.5 + path[k+1][1]*0.25
+                            ]);
+                        }
+                        smoothed.push(path[path.length-1]);
+                        path = smoothed;
+                    }
                     allPaths.push(path);
                 }
             }
 
-            // 3. 추출된 경로 위에 반투명 텍스트 흐르기
+            // 4. 추출된 유기적 경로 위에 텍스트 그리기
             ctx.font = `${FONT_SIZE}px monospace`;
             ctx.textBaseline = "middle";
-            ctx.fillStyle = "rgba(255, 255, 255, 0.4)"; // 은은한 느낌
+            ctx.fillStyle = "rgba(255, 255, 255, 0.35)"; // 고급스러운 반투명 화이트
 
             for (let path of allPaths) {
                 if(path.length < 5) continue; 
 
-                let currentLen = (flowOffset + path[0][0] * 15) % 500; 
+                let currentLen = (flowOffset + path[0][0] * 10) % 600; 
                 let charIdx = 0;
                 let pIdx = 0;
 
